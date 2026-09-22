@@ -6,7 +6,7 @@
 
 This repository implements a governed Azure Databricks lakehouse with separate DEV and PROD resources, Unity Catalog, Microsoft Entra identities, ADLS Gen2 external storage, and a medallion ETL architecture.
 
-The DEV foundation and the complete Sales JSON pipeline are implemented and validated. PROD bootstrap execution, Sales CSV, SalesLT federation, ABAC, ADF orchestration, and CI/CD implementation are explicitly tracked as future phases.
+The DEV foundation and the complete Sales JSON and Sales CSV pipelines are implemented, documented, and validated. PROD bootstrap execution, SalesLT federation, ABAC, ADF orchestration, and CI/CD implementation are explicitly tracked as future phases. The current working branch is **dev_qa**.
 
 Validated Sales JSON outcome:
 
@@ -21,6 +21,21 @@ Validated Sales JSON outcome:
                  |
                  v
 Silver revenue 237057.40 = Gold revenue 237057.40 (PASS)
+~~~
+
+Validated Sales CSV outcome:
+
+~~~text
+15 product rows + 500 inventory transaction rows in Bronze
+                              |
+                              v
+496 valid Silver rows + 4 rejected rows
+                              |
+                              v
+inventory_by_product + inventory_by_warehouse + low_stock_products
+                              |
+                              v
+Unit, inventory value, and low-stock rule validations (PASS)
 ~~~
 
 ## DEV and PROD architecture
@@ -46,7 +61,7 @@ lakehouse/   External Delta tables and catalog managed roots
 streaming/   Auto Loader schemas and checkpoints
 ~~~
 
-Managed catalog roots are isolated under **lakehouse/_managed/<catalog>/**. Explicit external Delta tables use workload paths such as **salesjson/bronze**, **salesjson/silver**, and **salesjson/gold**, so they do not overlap managed roots.
+Managed catalog roots are isolated under **lakehouse/_managed/<catalog>/**. Explicit external Delta tables use workload paths under **salesjson/** and **salescsv/** for Bronze, Silver, and Gold, so they do not overlap managed roots.
 
 ## Unity Catalog model
 
@@ -164,13 +179,82 @@ Notebook: **process/salesjson/99_phase_validation.ipynb**
 
 Screenshots under **evidence/salesjson/** cover layer counts, every Bronze source file, Auto Loader checkpoint state, schema evolution, rejected records, Gold output, and Silver-to-Gold revenue reconciliation.
 
+## Sales CSV ETL
+
+### Source and reproducible dataset
+
+**datasets/salescsv/generate_inventory_data.py** generates two CSV datasets delivered through ADLS Gen2 and accessed by the Databricks Access Connector Managed Identity:
+
+- **product_catalog.csv**: 15 product records used as reference data.
+- **inventory_transactions.csv**: 500 inventory movement records, including four deliberately invalid records for data-quality validation.
+
+### Bronze: PySpark batch ingestion
+
+Notebook: **process/salescsv/01_bronze_ingestion.ipynb**
+
+Targets:
+
+- **salescsv_<environment>.bronze.product_catalog_raw**
+- **salescsv_<environment>.bronze.inventory_transactions_raw**
+
+Bronze uses PySpark batch reads with **header=true** and **inferSchema=true**, adds source and ingestion metadata, and writes governed external Delta tables. The initial load creates each table at its explicit ADLS path; later executions use an idempotent Delta MERGE so the same source data can be processed safely without duplicate business keys.
+
+### Silver: casting, enrichment, and data quality
+
+Notebook: **process/salescsv/02_silver_transformation.ipynb**
+
+Targets:
+
+- **salescsv_<environment>.silver.inventory_movements**
+- **salescsv_<environment>.silver.rejected_transactions**
+
+Silver applies explicit casting and **try_cast** for malformed values, then performs a **LEFT JOIN** from inventory transactions to the product catalog. Ordered data-quality rules separate 496 valid records from 4 rejected records and preserve the rejection reason in **rejected_transactions**. The valid model derives signed **inventory_change** and **inventory_value_change** measures. Both valid and rejected external Delta tables are maintained with idempotent Delta MERGE logic.
+
+### Gold: inventory analytics
+
+Notebook: **process/salescsv/03_gold_analytics.ipynb**
+
+| Table | Grain and purpose |
+|---|---|
+| **inventory_by_product** | One row per product with inventory activity, units, value, and warehouse coverage. |
+| **inventory_by_warehouse** | One row per warehouse with product and transaction coverage plus inventory movement statistics. |
+| **low_stock_products** | Business-filtered product snapshot for items at or below their reorder level. |
+
+Gold reads only from valid Silver data. The models use **GROUP BY**, **COUNT DISTINCT**, **SUM**, **AVG**, **MIN**, and **MAX** aggregations plus the low-stock business filter. All three external Delta tables use snapshot MERGE semantics: update matches, insert new aggregates, and delete target rows absent from the current source snapshot.
+
+### Metadata, validation, and evidence
+
+- **process/salescsv/98_metadata_documentation.ipynb** applies English table and column comments across all Sales CSV Bronze, Silver, and Gold tables, including Genie-friendly business descriptions.
+- **process/salescsv/99_phase_validation.ipynb** validates medallion counts, rejected records, join enrichment, external Delta registration, and cross-layer reconciliation.
+- **evidence/salescsv/** contains the execution screenshots for counts, rejected records, the Silver-to-Gold reconciliation, Gold outputs, external tables, join behavior, and the low-stock rule.
+
+| Check | Observed result |
+|---|---:|
+| Product Bronze rows | **15** |
+| Inventory Bronze rows | **500** |
+| Valid Silver rows | **496** |
+| Rejected Silver rows | **4** |
+| Gold product rows | **15** |
+| Gold warehouse rows | **3** |
+| Unit reconciliation | **PASS** |
+| Inventory value reconciliation | **PASS** |
+| Low-stock business rule | **PASS** |
+
 ## Repository layout
 
 ~~~text
 repo_dbx_jr/
+├── datasets/salescsv/
 ├── datasets/salesjson/
+├── evidence/salescsv/
 ├── evidence/salesjson/
 ├── prepenv/00_environment_setup.ipynb
+├── process/salescsv/
+│   ├── 01_bronze_ingestion.ipynb
+│   ├── 02_silver_transformation.ipynb
+│   ├── 03_gold_analytics.ipynb
+│   ├── 98_metadata_documentation.ipynb
+│   └── 99_phase_validation.ipynb
 ├── process/salesjson/
 │   ├── 01_bronze_ingestion.ipynb
 │   ├── 02_silver_transformation.ipynb
@@ -182,7 +266,7 @@ repo_dbx_jr/
 └── README_PROFESSOR_ES.md
 ~~~
 
-The environment, security, and ETL notebooks accept **environment=dev|prod**; the same code selects the corresponding storage account and catalog. Sales JSON was validated on Databricks Serverless compute.
+The environment, security, and ETL notebooks accept **environment=dev|prod**; the same code selects the corresponding storage account and catalog. Sales JSON and Sales CSV were validated in DEV on Databricks Serverless compute.
 
 ## CI/CD decision
 
@@ -198,10 +282,11 @@ resources/
 └── saleslt.job.yml
 ~~~
 
-The Sales JSON dependency chain will be:
+The workload dependency chains will be:
 
 ~~~text
-Bronze -> Silver -> Gold -> Validation
+Sales JSON: Bronze -> Silver -> Gold -> Validation
+Sales CSV : Bronze -> Silver -> Gold -> Metadata -> Validation
 ~~~
 
 Expected workflow:
@@ -218,6 +303,9 @@ The **dev_qa** branch will deploy to DEV; promotion to **main** will deploy to P
 
 - DEV foundation and Unity Catalog security: complete.
 - Sales JSON Bronze, Silver, Gold, validation, and evidence: complete.
+- Sales CSV Bronze, Silver, Gold, metadata, validation, and evidence: complete.
+- Current working branch: **dev_qa**.
 - PROD bootstrap execution: pending.
-- Bundle YAML and GitHub Actions implementation: next phase.
-- Sales CSV, SalesLT, ABAC, ADF, and final visualization: pending.
+- SalesLT federation: next ETL phase.
+- Bundle YAML and GitHub Actions implementation: pending; the architecture decision is complete.
+- ABAC, ADF, and final visualization: pending.
