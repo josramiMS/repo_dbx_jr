@@ -1,0 +1,16 @@
+product_id,product_name,category,supplier,unit_cost,reorder_level
+P1001,Wireless Mouse,Accessories,TechSource,18.5,20
+P1002,Mechanical Keyboard,Accessories,KeyWorks,55.0,15
+P1003,USB-C Dock,Accessories,TechSource,72.0,12
+P1004,USB-C Cable,Accessories,CableDirect,8.5,30
+P2001,27-inch Monitor,Displays,VisionTech,185.0,10
+P2002,34-inch Ultrawide Monitor,Displays,VisionTech,370.0,6
+P2003,Portable Monitor,Displays,DisplayPro,135.0,8
+P3001,Business Laptop,Computers,ComputeCorp,720.0,8
+P3002,Gaming Laptop,Computers,ComputeCorp,1050.0,5
+P3003,Mini PC,Computers,MicroSystems,420.0,7
+P4001,Webcam,Peripherals,VisionTech,48.0,15
+P4002,USB Headset,Peripherals,AudioWorks,38.0,18
+P4003,Conference Speaker,Peripherals,AudioWorks,95.0,8
+P5001,External SSD 1TB,Storage,DataStore,68.0,12
+P5002,External SSD 2TB,Storage,DataStore,115.0,8
