@@ -4,7 +4,7 @@
 
 ## Resumen ejecutivo
 
-El proyecto implementa una arquitectura lakehouse gobernada en Azure Databricks. La fundación DEV y los ETL Sales JSON y Sales CSV están completos y validados de extremo a extremo. La rama de trabajo actual es **dev_qa**. PROD, SalesLT, ABAC, ADF y la implementación de CI/CD con Bundles están separados como fases futuras para no presentar trabajo planificado como terminado.
+El proyecto implementa una arquitectura lakehouse gobernada en Azure Databricks. La fundación DEV y los tres ETL —Sales JSON, Sales CSV y SalesLT— están funcionalmente completos y validados de extremo a extremo en DEV. La rama actual es **dev_qa**. La implementación de Bundles/Jobs es la siguiente fase; PROD, ABAC, ADF y los extras restantes se mantienen como pendientes para no presentar trabajo planificado como terminado.
 
 ~~~text
 15 JSON files / 150 Bronze rows
@@ -24,6 +24,13 @@ Sales CSV: 15 productos + 500 transacciones Bronze
            -> 496 válidas + 4 rechazadas Silver
            -> 3 modelos Gold
            -> unit/value/low-stock validations: PASS
+~~~
+
+~~~text
+SalesLT: Azure SQL privado -> fc_saleslt_dev -> 5 Bronze snapshots
+         -> 847 customers + 295 products + 542 sales lines en Silver
+         -> 3 modelos Gold
+         -> 708690.07 = 708690.07 = 708690.07: PASS
 ~~~
 
 ## Mapa rápido de evaluación
@@ -47,6 +54,11 @@ Sales CSV: 15 productos + 500 transacciones Bronze
 | CSV Gold | inventory_by_product, inventory_by_warehouse y low_stock_products | Notebooks y Gold table evidence | Completo |
 | CSV reconciliación | Units, inventory value y low-stock business rule | Notebook Validation y evidence/salescsv/ | PASS |
 | CSV metadata | Table/column comments en inglés | 98_metadata_documentation.ipynb | Completo |
+| SalesLT conectividad | Azure SQL con public access disabled; Foreign Catalog **fc_saleslt_dev**; SP **sp-centraulus-azsql**; NCC + Private Endpoint; Serverless | Configuración ejecutada y evidencias del ETL | Validado en DEV |
+| SalesLT Bronze | Snapshot replication de 5 tablas federadas a external Delta | 01_bronze_ingestion + reconciliación SQL/Bronze | 5/5 PASS |
+| SalesLT Silver | customers/products/sales_order_lines; joins y moneda a 2 decimales | 02_silver_transformation + evidencia de join | 847 / 295 / 542 |
+| SalesLT Gold | sales_by_product, sales_by_customer, monthly_sales_summary; aggregations y ranking | 03_gold_analytics + outputs | Completo |
+| SalesLT reconciliación | Silver, Product Gold y Monthly Gold | 99_phase_validation + evidence/saleslt/ | 708690.07 en las 3 capas; PASS |
 | CI/CD | Declarative Automation Bundles; Jobs YAML | Decisión de diseño documentada | Implementación pendiente |
 
 ## Recursos
@@ -76,7 +88,7 @@ Los Access Connectors usan Managed Identity. Los nombres técnicos y comentarios
 | **grp-dbx-developers** | DEV: USE, CREATE TABLE, SELECT, MODIFY y External Locations requeridas. PROD: lectura. |
 | **grp-dbx-analysts** | USE y SELECT únicamente en Gold. |
 | **sp-centraulus-dbx-main** | Runtime de Jobs en schemas existentes; landing read; external table create; streaming read/write. |
-| **sp-centraulus-azsql** | Identidad futura para SalesLT federation. |
+| **sp-centraulus-azsql** | Identidad de la conexión federada Azure SQL / SalesLT en DEV. |
 
 El ETL SP no recibe CREATE CATALOG, CREATE SCHEMA, MANAGE, OWNERSHIP ni acceso directo al Storage Credential.
 
@@ -85,6 +97,7 @@ El ETL SP no recibe CREATE CATALOG, CREATE SCHEMA, MANAGE, OWNERSHIP ni acceso d
 Bronze:
 
 - Auto Loader + Structured Streaming sobre **landing/salesjson/incoming/**.
+- ADLS mediante Managed Identity y ejecución Serverless a través del NCC configurado.
 - Managed File Events, schema location, checkpoint, rescued data y file metadata.
 - addNewColumns, Delta mergeSchema y availableNow=True.
 - Target externo **salesjson_dev.bronze.orders_raw**.
@@ -138,6 +151,51 @@ Metadata y validación:
 - **process/salescsv/98_metadata_documentation.ipynb** documenta en inglés tables y columns para consumo técnico y Genie.
 - **process/salescsv/99_phase_validation.ipynb** confirma unit reconciliation, inventory value reconciliation y low-stock business rule: **PASS**.
 
+## ETL SalesLT
+
+Conectividad y ejecución:
+
+- Azure SQL con public access disabled.
+- Lakehouse Federation Foreign Catalog **fc_saleslt_dev**.
+- Connection autenticada con **sp-centraulus-azsql**.
+- Conectividad privada mediante NCC + Private Endpoint.
+- Ejecución en Databricks Serverless compute.
+
+Bronze:
+
+- Snapshot replication a cinco tablas Delta externas.
+- Reconciliación fuente/Bronze: Customer **847**, Product **295**, ProductCategory **41**, SalesOrderHeader **32**, SalesOrderDetail **542**; todas **PASS**.
+
+Silver:
+
+- **customers** (**847**), **products** (**295**) y **sales_order_lines** (**542**).
+- Joins entre headers, details, customers, products y categories.
+- Normalización y monetary precision a dos decimales para analytics.
+
+Gold:
+
+- **sales_by_product**, con aggregations y revenue ranking.
+- **sales_by_customer**, con actividad, productos y gasto.
+- **monthly_sales_summary**, con métricas mensuales.
+- Reconciliación: Silver **708690.07** = Product Gold **708690.07** = Monthly Gold **708690.07**: **PASS**.
+
+Metadata y validación:
+
+- **process/saleslt/98_metadata_documentation.ipynb** documenta tables y columns.
+- **process/saleslt/99_phase_validation.ipynb** valida snapshots, Silver, Gold y reconciliación.
+
+## Patrón común de los tres ETL
+
+~~~text
+01_bronze_ingestion.py
+02_silver_transformation.py
+03_gold_analytics.py
+98_metadata_documentation.py
+99_phase_validation.py
+~~~
+
+En el repositorio se conservan como notebooks **.ipynb** bajo **process/salesjson/**, **process/salescsv/** y **process/saleslt/**.
+
 ## Evidencias
 
 Carpeta: **evidence/salesjson/**
@@ -157,9 +215,16 @@ Carpeta: **evidence/salescsv/**
 - Gold product 15, Gold warehouse 3 y salida low stock.
 - Unit reconciliation, inventory value reconciliation y low-stock business rule: PASS.
 
+Carpeta: **evidence/saleslt/**
+
+- Conteos Azure SQL Federation contra Bronze para las cinco tablas: PASS.
+- Silver summary y evidencia de joins.
+- Outputs de **sales_by_product**, **sales_by_customer** y **monthly_sales_summary**.
+- Reconciliación 708690.07 en Silver, Product Gold y Monthly Gold: PASS.
+
 ## CI/CD
 
-Se usarán [Databricks Declarative Automation Bundles](https://docs.databricks.com/aws/en/dev-tools/bundles/jobs-tutorial) con Jobs definidos en YAML.
+La siguiente fase implementará [Databricks Declarative Automation Bundles](https://docs.databricks.com/aws/en/dev-tools/bundles/jobs-tutorial) con Jobs definidos en YAML. La decisión está tomada, pero los Bundles y Jobs todavía no están implementados.
 
 ~~~text
 databricks.yml
@@ -169,13 +234,15 @@ resources/
 └── saleslt.job.yml
 ~~~
 
-Sales JSON seguirá **Bronze -> Silver -> Gold -> Validation** y Sales CSV seguirá **Bronze -> Silver -> Gold -> Metadata -> Validation**. El flujo será bundle validate, bundle deploy y bundle run. **dev_qa** desplegará a DEV; **main** a PROD; los Jobs productivos usarán **sp-centraulus-dbx-main** como Run as.
+Sales JSON, Sales CSV y SalesLT seguirán **Bronze -> Silver -> Gold -> Metadata -> Validation**. El flujo será bundle validate, bundle deploy y bundle run. **dev_qa** desplegará a DEV; **main** a PROD; los Jobs productivos usarán **sp-centraulus-dbx-main** como Run as.
 
 ## Estado de la entrega
 
 - Fundación DEV: completa.
-- Sales JSON Bronze/Silver/Gold: completo.
-- Sales CSV Bronze/Silver/Gold/metadata: completo.
-- Validaciones, reconciliaciones y evidencias de Sales JSON y Sales CSV: completas.
+- Sales JSON Bronze/Silver/Gold/metadata: completo y validado en DEV.
+- Sales CSV Bronze/Silver/Gold/metadata: completo y validado en DEV.
+- SalesLT private federation/Bronze/Silver/Gold/metadata: completo y validado en DEV.
+- Validaciones, reconciliaciones y evidencias de los tres ETL: completas.
 - Rama de trabajo: **dev_qa**.
-- PROD, implementación de Bundles, SalesLT, ABAC, ADF y visualización final: pendientes y claramente identificados.
+- Siguiente fase: implementación de Bundles/Jobs.
+- Después: despliegue PROD; ABAC, ADF y visualización final continúan pendientes.

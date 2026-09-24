@@ -6,7 +6,7 @@
 
 This repository implements a governed Azure Databricks lakehouse with separate DEV and PROD resources, Unity Catalog, Microsoft Entra identities, ADLS Gen2 external storage, and a medallion ETL architecture.
 
-The DEV foundation and the complete Sales JSON and Sales CSV pipelines are implemented, documented, and validated. PROD bootstrap execution, SalesLT federation, ABAC, ADF orchestration, and CI/CD implementation are explicitly tracked as future phases. The current working branch is **dev_qa**.
+The DEV foundation and all three ETLs—Sales JSON, Sales CSV, and SalesLT—are functionally complete, documented, and validated on Databricks Serverless compute. The current working branch is **dev_qa**. Databricks Declarative Automation Bundles and YAML-defined Jobs are the next phase; PROD deployment, ABAC, ADF orchestration, and the remaining optional deliverables stay explicitly pending.
 
 Validated Sales JSON outcome:
 
@@ -36,6 +36,28 @@ inventory_by_product + inventory_by_warehouse + low_stock_products
                               |
                               v
 Unit, inventory value, and low-stock rule validations (PASS)
+~~~
+
+Validated SalesLT outcome:
+
+~~~text
+Azure SQL SalesLT (public access disabled)
+        |
+        v
+Lakehouse Federation: fc_saleslt_dev
+SP authentication + NCC Private Endpoint + Serverless compute
+        |
+        v
+5 source snapshots replicated to external Bronze Delta (all counts PASS)
+        |
+        v
+customers + products + sales_order_lines in Silver
+        |
+        v
+sales_by_product + sales_by_customer + monthly_sales_summary in Gold
+        |
+        v
+Silver 708690.07 = Product Gold 708690.07 = Monthly Gold 708690.07 (PASS)
 ~~~
 
 ## DEV and PROD architecture
@@ -79,7 +101,7 @@ Every catalog contains:
 
 Technical object names and Unity Catalog comments are kept in English for consistent metadata and future Genie usage.
 
-SalesLT is planned to be exposed through **fc_saleslt_dev** and **fc_saleslt_prod**. The future federated connection will use **sp-centraulus-azsql**; transformed Delta data will remain in **saleslt_<environment>**.
+In DEV, Azure SQL SalesLT is exposed through the Lakehouse Federation Foreign Catalog **fc_saleslt_dev**. The connection authenticates with **sp-centraulus-azsql** and reaches an Azure SQL server with public access disabled through a Network Connectivity Configuration (NCC) and Private Endpoint. The PROD names **fc_saleslt_prod** and **saleslt_prod** remain part of the target architecture; PROD deployment is not yet complete. Replicated and transformed Delta data stays in **saleslt_<environment>**.
 
 ## Identities and permissions
 
@@ -89,7 +111,7 @@ SalesLT is planned to be exposed through **fc_saleslt_dev** and **fc_saleslt_pro
 | **grp-dbx-developers** | Microsoft Entra account group for engineering in DEV and read access in PROD. |
 | **grp-dbx-analysts** | Microsoft Entra account group with Gold-only consumption. |
 | **sp-centraulus-dbx-main** | Job run identity and planned bundle deployment identity. Application ID: **acc15410-5c5f-473e-bc6f-61b7946176a2**. |
-| **sp-centraulus-azsql** | Planned identity for the SalesLT Azure SQL federated connection. |
+| **sp-centraulus-azsql** | Connection identity used by the DEV SalesLT Azure SQL federated connection. |
 
 Main Unity Catalog grants:
 
@@ -124,6 +146,7 @@ Target: **salesjson_<environment>.bronze.orders_raw**
 Bronze:
 
 - reads **landing/salesjson/incoming/** with Auto Loader and cloudFiles.format = json;
+- runs on Databricks Serverless compute with the configured NCC network path;
 - uses Unity Catalog Managed File Events;
 - persists inferred schema under **streaming/salesjson/schemas/orders/**;
 - enables cloudFiles.schemaEvolutionMode = addNewColumns;
@@ -240,6 +263,83 @@ Gold reads only from valid Silver data. The models use **GROUP BY**, **COUNT DIS
 | Inventory value reconciliation | **PASS** |
 | Low-stock business rule | **PASS** |
 
+## SalesLT ETL
+
+### Federated Azure SQL source and private connectivity
+
+The DEV source is Azure SQL SalesLT with public network access disabled. Databricks Lakehouse Federation exposes it as the Foreign Catalog **fc_saleslt_dev**. The connection authenticates with the service principal **sp-centraulus-azsql**, and Databricks Serverless compute reaches the database through the workspace NCC and its approved Private Endpoint.
+
+### Bronze: federated snapshot replication
+
+Notebook: **process/saleslt/01_bronze_ingestion.ipynb**
+
+Bronze reads five source tables through Lakehouse Federation and materializes current snapshots as governed external Delta tables in **saleslt_<environment>.bronze**:
+
+| Azure SQL source | External Bronze target | DEV validation |
+|---|---|---:|
+| **Customer** | **customer_raw** | **847 = 847 (PASS)** |
+| **Product** | **product_raw** | **295 = 295 (PASS)** |
+| **ProductCategory** | **product_category_raw** | **41 = 41 (PASS)** |
+| **SalesOrderHeader** | **sales_order_header_raw** | **32 = 32 (PASS)** |
+| **SalesOrderDetail** | **sales_order_detail_raw** | **542 = 542 (PASS)** |
+
+The initial load creates the external Delta tables at explicit ADLS paths. Later runs synchronize each snapshot with Delta MERGE, including updates, inserts, and deletion of target rows no longer present in the federated source.
+
+### Silver: joined business models
+
+Notebook: **process/saleslt/02_silver_transformation.ipynb**
+
+| Table | DEV rows | Purpose |
+|---|---:|---|
+| **customers** | **847** | Clean customer dimension with normalized names, contact fields, and timestamps. |
+| **products** | **295** | Product dimension enriched with product category and active-status metadata. |
+| **sales_order_lines** | **542** | Order-detail fact joined to headers, customers, products, and categories. |
+
+Silver applies joins, trimming and normalization, explicit typing, business-validity filters, and snapshot MERGE. Monetary values are normalized to two-decimal precision for consistent analytics; **unit_price_discount** retains four decimal places.
+
+### Gold: sales analytics
+
+Notebook: **process/saleslt/03_gold_analytics.ipynb**
+
+| Table | Grain and purpose |
+|---|---|
+| **sales_by_product** | Product performance with orders, customers, units, revenue statistics, and dense revenue ranking. |
+| **sales_by_customer** | Customer purchasing activity, distinct products, spend, and first/last order dates. |
+| **monthly_sales_summary** | Monthly order, customer, product, unit, and revenue measures. |
+
+Gold reads only from **silver.sales_order_lines**, uses aggregations and ranking, and persists all three models as external Delta tables with snapshot MERGE semantics.
+
+### Metadata, validation, and evidence
+
+- **process/saleslt/98_metadata_documentation.ipynb** applies English table and column comments across SalesLT Bronze, Silver, and Gold.
+- **process/saleslt/99_phase_validation.ipynb** checks federation-to-Bronze counts, Silver models, joined data, Gold outputs, and revenue reconciliation.
+- **evidence/saleslt/** contains screenshots for SQL-source-to-Bronze reconciliation, Silver counts and joins, all three Gold outputs, and Gold revenue reconciliation.
+
+| Check | Observed result |
+|---|---:|
+| Federation-to-Bronze snapshot counts | **PASS for all 5 tables** |
+| Silver customers | **847** |
+| Silver products | **295** |
+| Silver sales order lines | **542** |
+| Silver revenue | **708690.07** |
+| Product Gold revenue | **708690.07** |
+| Monthly Gold revenue | **708690.07** |
+| Gold reconciliation | **PASS** |
+
+## Common ETL notebook pattern
+
+Each of the three workloads follows the same ordered notebook contract:
+
+~~~text
+01_bronze_ingestion.py
+02_silver_transformation.py
+03_gold_analytics.py
+98_metadata_documentation.py
+99_phase_validation.py
+~~~
+
+The repository stores these notebooks as **.ipynb** exports under **process/<workload>/**. The **.py** names above describe the shared Databricks notebook/job task pattern that will be wired into Bundles.
+
 ## Repository layout
 
 ~~~text
@@ -248,6 +348,7 @@ repo_dbx_jr/
 ├── datasets/salesjson/
 ├── evidence/salescsv/
 ├── evidence/salesjson/
+├── evidence/saleslt/
 ├── prepenv/00_environment_setup.ipynb
 ├── process/salescsv/
 │   ├── 01_bronze_ingestion.ipynb
@@ -259,6 +360,13 @@ repo_dbx_jr/
 │   ├── 01_bronze_ingestion.ipynb
 │   ├── 02_silver_transformation.ipynb
 │   ├── 03_gold_analytics.ipynb
+│   ├── 98_metadata_documentation.ipynb
+│   └── 99_phase_validation.ipynb
+├── process/saleslt/
+│   ├── 01_bronze_ingestion.ipynb
+│   ├── 02_silver_transformation.ipynb
+│   ├── 03_gold_analytics.ipynb
+│   ├── 98_metadata_documentation.ipynb
 │   └── 99_phase_validation.ipynb
 ├── security/00_unity_catalog_grants.ipynb
 ├── README.md
@@ -266,11 +374,11 @@ repo_dbx_jr/
 └── README_PROFESSOR_ES.md
 ~~~
 
-The environment, security, and ETL notebooks accept **environment=dev|prod**; the same code selects the corresponding storage account and catalog. Sales JSON and Sales CSV were validated in DEV on Databricks Serverless compute.
+The environment, security, and ETL notebooks accept **environment=dev|prod**; the same code selects the corresponding storage account and catalog. All three ETLs were validated functionally in DEV. The SalesLT connection, private network path, and processing were validated on Databricks Serverless compute; Sales JSON was also validated with its Serverless/NCC path.
 
 ## CI/CD decision
 
-The project will use [Databricks Declarative Automation Bundles](https://docs.databricks.com/aws/en/dev-tools/bundles/jobs-tutorial), formerly Databricks Asset Bundles. Jobs will be versioned as YAML resources instead of maintained manually in the workspace.
+The next phase will implement [Databricks Declarative Automation Bundles](https://docs.databricks.com/aws/en/dev-tools/bundles/jobs-tutorial), formerly Databricks Asset Bundles. Jobs will be versioned as YAML resources instead of maintained manually in the workspace. No Bundle or Job YAML is implemented yet.
 
 Planned structure:
 
@@ -285,8 +393,9 @@ resources/
 The workload dependency chains will be:
 
 ~~~text
-Sales JSON: Bronze -> Silver -> Gold -> Validation
+Sales JSON: Bronze -> Silver -> Gold -> Metadata -> Validation
 Sales CSV : Bronze -> Silver -> Gold -> Metadata -> Validation
+SalesLT   : Bronze -> Silver -> Gold -> Metadata -> Validation
 ~~~
 
 Expected workflow:
@@ -302,10 +411,10 @@ The **dev_qa** branch will deploy to DEV; promotion to **main** will deploy to P
 ## Project status
 
 - DEV foundation and Unity Catalog security: complete.
-- Sales JSON Bronze, Silver, Gold, validation, and evidence: complete.
-- Sales CSV Bronze, Silver, Gold, metadata, validation, and evidence: complete.
+- Sales JSON Bronze, Silver, Gold, metadata, validation, and evidence: complete in DEV.
+- Sales CSV Bronze, Silver, Gold, metadata, validation, and evidence: complete in DEV.
+- SalesLT private federation, Bronze, Silver, Gold, metadata, validation, and evidence: complete in DEV.
 - Current working branch: **dev_qa**.
-- PROD bootstrap execution: pending.
-- SalesLT federation: next ETL phase.
-- Bundle YAML and GitHub Actions implementation: pending; the architecture decision is complete.
+- Next phase: Bundle YAML and Databricks Jobs implementation; the Declarative Automation Bundles architecture decision is complete, but implementation is pending.
+- After Bundles/Jobs: PROD bootstrap and workload deployment remain pending.
 - ABAC, ADF, and final visualization: pending.
