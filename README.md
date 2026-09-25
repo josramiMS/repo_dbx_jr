@@ -6,7 +6,7 @@
 
 This repository implements a governed Azure Databricks lakehouse with separate DEV and PROD resources, Unity Catalog, Microsoft Entra identities, ADLS Gen2 external storage, and a medallion ETL architecture.
 
-The DEV foundation and all three ETLs—Sales JSON, Sales CSV, and SalesLT—are functionally complete, documented, and validated on Databricks Serverless compute. The current working branch is **dev_qa**. Databricks Declarative Automation Bundles and YAML-defined Jobs are the next phase; PROD deployment, ABAC, ADF orchestration, and the remaining optional deliverables stay explicitly pending.
+The DEV foundation, Unity Catalog grants baseline, ABAC controls, and all three ETLs—Sales JSON, Sales CSV, and SalesLT—are functionally complete, documented, and validated on Databricks Serverless compute. The current working branch is **dev_qa**. Databricks Declarative Automation Bundles and YAML-defined Jobs in DEV are the next phase; PROD deployment, ADF orchestration, and the remaining optional deliverables stay explicitly pending.
 
 Validated Sales JSON outcome:
 
@@ -125,6 +125,26 @@ Main Unity Catalog grants:
 
 The ETL service principal does not receive CREATE CATALOG, CREATE SCHEMA, MANAGE, OWNERSHIP, or direct access to the storage credential. Once an external Delta table is registered, data changes are governed through MODIFY; arbitrary writes to the lakehouse container are not granted.
 
+### DEV security baseline and ABAC
+
+The existing Unity Catalog grants baseline is implemented by **security/00_unity_catalog_grants.ipynb** and provides the catalog, schema, table, and external-location permissions summarized above. ABAC adds data-level controls without replacing those baseline grants.
+
+The account-level governed tag **data_classification** drives both completed ABAC policies:
+
+| Control | Protected column | Governed-tag value | Behavior for **grp-dbx-analysts** | Admin/developer behavior |
+|---|---|---|---|---|
+| Column mask (**mask_pii_email_for_analysts**) | **saleslt_dev.gold.sales_by_customer.customer_email** | **pii_email** | Email is masked, preserving only the first character and domain, for example `j***@example.com`. | Original email is visible. |
+| Row filter (**filter_country_for_analysts**) | **salesjson_dev.gold.customer_sales_summary.country** | **geo_country** | Only rows where country is **Costa Rica** are visible. | All country rows are visible. |
+
+Observed DEV row-filter validation:
+
+| Identity | Costa Rica | United States | Mexico | Colombia | Total |
+|---|---:|---:|---:|---:|---:|
+| Admin/developer | **34** | **24** | **19** | **15** | **92** |
+| **grp-dbx-analysts** | **34** | **0** | **0** | **0** | **34** |
+
+The Databricks notebook task **security/01_abac_policies.py** defines the tag-based column mask and row filter; this repository versions its exported notebook as **security/01_abac_policies.ipynb**. Grants evidence is stored under **evidence/Security/UC_GRANTS/**, while policy configuration and identity-specific query results are stored under **evidence/Security/ABAC/**. With the baseline grants and ABAC validations complete, Security DEV is complete.
+
 ## Sales JSON ETL
 
 ### Reproducible dataset
@@ -200,7 +220,7 @@ Notebook: **process/salesjson/99_phase_validation.ipynb**
 | Gold net revenue | **237057.40** |
 | Reconciliation | **PASS** |
 
-Screenshots under **evidence/salesjson/** cover layer counts, every Bronze source file, Auto Loader checkpoint state, schema evolution, rejected records, Gold output, and Silver-to-Gold revenue reconciliation.
+Screenshots under **evidence/Medallion/salesjson/** cover layer counts, every Bronze source file, Auto Loader checkpoint state, schema evolution, rejected records, Gold output, and Silver-to-Gold revenue reconciliation.
 
 ## Sales CSV ETL
 
@@ -249,7 +269,7 @@ Gold reads only from valid Silver data. The models use **GROUP BY**, **COUNT DIS
 
 - **process/salescsv/98_metadata_documentation.ipynb** applies English table and column comments across all Sales CSV Bronze, Silver, and Gold tables, including Genie-friendly business descriptions.
 - **process/salescsv/99_phase_validation.ipynb** validates medallion counts, rejected records, join enrichment, external Delta registration, and cross-layer reconciliation.
-- **evidence/salescsv/** contains the execution screenshots for counts, rejected records, the Silver-to-Gold reconciliation, Gold outputs, external tables, join behavior, and the low-stock rule.
+- **evidence/Medallion/salescsv/** contains the execution screenshots for counts, rejected records, the Silver-to-Gold reconciliation, Gold outputs, external tables, join behavior, and the low-stock rule.
 
 | Check | Observed result |
 |---|---:|
@@ -313,7 +333,7 @@ Gold reads only from **silver.sales_order_lines**, uses aggregations and ranking
 
 - **process/saleslt/98_metadata_documentation.ipynb** applies English table and column comments across SalesLT Bronze, Silver, and Gold.
 - **process/saleslt/99_phase_validation.ipynb** checks federation-to-Bronze counts, Silver models, joined data, Gold outputs, and revenue reconciliation.
-- **evidence/saleslt/** contains screenshots for SQL-source-to-Bronze reconciliation, Silver counts and joins, all three Gold outputs, and Gold revenue reconciliation.
+- **evidence/Medallion/saleslt/** contains screenshots for SQL-source-to-Bronze reconciliation, Silver counts and joins, all three Gold outputs, and Gold revenue reconciliation.
 
 | Check | Observed result |
 |---|---:|
@@ -346,9 +366,13 @@ The repository stores these notebooks as **.ipynb** exports under **process/<wor
 repo_dbx_jr/
 ├── datasets/salescsv/
 ├── datasets/salesjson/
-├── evidence/salescsv/
-├── evidence/salesjson/
-├── evidence/saleslt/
+├── evidence/Medallion/
+│   ├── salescsv/
+│   ├── salesjson/
+│   └── saleslt/
+├── evidence/Security/
+│   ├── UC_GRANTS/
+│   └── ABAC/
 ├── prepenv/00_environment_setup.ipynb
 ├── process/salescsv/
 │   ├── 01_bronze_ingestion.ipynb
@@ -368,7 +392,9 @@ repo_dbx_jr/
 │   ├── 03_gold_analytics.ipynb
 │   ├── 98_metadata_documentation.ipynb
 │   └── 99_phase_validation.ipynb
-├── security/00_unity_catalog_grants.ipynb
+├── security/
+│   ├── 00_unity_catalog_grants.ipynb
+│   └── 01_abac_policies.ipynb
 ├── README.md
 ├── README_ES.md
 └── README_PROFESSOR_ES.md
@@ -410,11 +436,11 @@ The **dev_qa** branch will deploy to DEV; promotion to **main** will deploy to P
 
 ## Project status
 
-- DEV foundation and Unity Catalog security: complete.
+- DEV foundation and Unity Catalog security: complete, including the grants baseline and ABAC.
 - Sales JSON Bronze, Silver, Gold, metadata, validation, and evidence: complete in DEV.
 - Sales CSV Bronze, Silver, Gold, metadata, validation, and evidence: complete in DEV.
 - SalesLT private federation, Bronze, Silver, Gold, metadata, validation, and evidence: complete in DEV.
 - Current working branch: **dev_qa**.
 - Next phase: Bundle YAML and Databricks Jobs implementation; the Declarative Automation Bundles architecture decision is complete, but implementation is pending.
 - After Bundles/Jobs: PROD bootstrap and workload deployment remain pending.
-- ABAC, ADF, and final visualization: pending.
+- ADF and final visualization: pending.

@@ -4,7 +4,7 @@
 
 ## Resumen ejecutivo
 
-El proyecto implementa una arquitectura lakehouse gobernada en Azure Databricks. La fundación DEV y los tres ETL —Sales JSON, Sales CSV y SalesLT— están funcionalmente completos y validados de extremo a extremo en DEV. La rama actual es **dev_qa**. La implementación de Bundles/Jobs es la siguiente fase; PROD, ABAC, ADF y los extras restantes se mantienen como pendientes para no presentar trabajo planificado como terminado.
+El proyecto implementa una arquitectura lakehouse gobernada en Azure Databricks. La fundación DEV, Security DEV —grants de Unity Catalog + ABAC— y los tres ETL —Sales JSON, Sales CSV y SalesLT— están completos y validados de extremo a extremo en DEV. La rama actual es **dev_qa**. Databricks Declarative Automation Bundles + Jobs en DEV es la siguiente fase; PROD, ADF y los extras restantes siguen pendientes.
 
 ~~~text
 15 JSON files / 150 Bronze rows
@@ -41,6 +41,8 @@ SalesLT: Azure SQL privado -> fc_saleslt_dev -> 5 Bronze snapshots
 | Managed Identity | Access Connectors y Storage Credentials | External Locations landing/lakehouse/streaming | DEV validado |
 | Unity Catalog | Catálogos por workload; schemas bronze/silver/gold | Notebook de ambiente | DEV completo |
 | Control de acceso | Developers R/W/Create en DEV; Analysts solo Gold; ETL SP mínimo | **00_unity_catalog_grants.ipynb** | Validado con SHOW GRANTS |
+| ABAC: column mask | Governed tag **data_classification** sobre **saleslt_dev.gold.sales_by_customer.customer_email** | **01_abac_policies** + **evidence/Security/ABAC/** | Admin/developer: email normal; analyst: email enmascarado |
+| ABAC: row filter | Governed tag **data_classification** sobre **salesjson_dev.gold.customer_sales_summary.country** | **01_abac_policies** + **evidence/Security/ABAC/** | Admin: 92 filas; analyst: 34 filas, solo Costa Rica |
 | Dataset incremental | 15 archivos NDJSON | **datasets/salesjson/** | Completo |
 | Auto Loader | cloudFiles, Managed File Events, availableNow | Notebook Bronze | Validado |
 | Checkpoint/schema | Rutas separadas en streaming | Notebook y evidencia | Validado |
@@ -52,13 +54,13 @@ SalesLT: Azure SQL privado -> fc_saleslt_dev -> 5 Bronze snapshots
 | CSV Bronze | PySpark batch, header=true, inferSchema=true, external Delta, idempotent MERGE | Notebook y external tables evidence | 15 productos / 500 transacciones |
 | CSV Silver | explicit casting, try_cast, LEFT JOIN, data-quality rules y rejected_transactions | Notebook y rejected records evidence | 496 válidos / 4 rechazados |
 | CSV Gold | inventory_by_product, inventory_by_warehouse y low_stock_products | Notebooks y Gold table evidence | Completo |
-| CSV reconciliación | Units, inventory value y low-stock business rule | Notebook Validation y evidence/salescsv/ | PASS |
+| CSV reconciliación | Units, inventory value y low-stock business rule | Notebook Validation y evidence/Medallion/salescsv/ | PASS |
 | CSV metadata | Table/column comments en inglés | 98_metadata_documentation.ipynb | Completo |
 | SalesLT conectividad | Azure SQL con public access disabled; Foreign Catalog **fc_saleslt_dev**; SP **sp-centraulus-azsql**; NCC + Private Endpoint; Serverless | Configuración ejecutada y evidencias del ETL | Validado en DEV |
 | SalesLT Bronze | Snapshot replication de 5 tablas federadas a external Delta | 01_bronze_ingestion + reconciliación SQL/Bronze | 5/5 PASS |
 | SalesLT Silver | customers/products/sales_order_lines; joins y moneda a 2 decimales | 02_silver_transformation + evidencia de join | 847 / 295 / 542 |
 | SalesLT Gold | sales_by_product, sales_by_customer, monthly_sales_summary; aggregations y ranking | 03_gold_analytics + outputs | Completo |
-| SalesLT reconciliación | Silver, Product Gold y Monthly Gold | 99_phase_validation + evidence/saleslt/ | 708690.07 en las 3 capas; PASS |
+| SalesLT reconciliación | Silver, Product Gold y Monthly Gold | 99_phase_validation + evidence/Medallion/saleslt/ | 708690.07 en las 3 capas; PASS |
 | CI/CD | Declarative Automation Bundles; Jobs YAML | Decisión de diseño documentada | Implementación pendiente |
 
 ## Recursos
@@ -91,6 +93,17 @@ Los Access Connectors usan Managed Identity. Los nombres técnicos y comentarios
 | **sp-centraulus-azsql** | Identidad de la conexión federada Azure SQL / SalesLT en DEV. |
 
 El ETL SP no recibe CREATE CATALOG, CREATE SCHEMA, MANAGE, OWNERSHIP ni acceso directo al Storage Credential.
+
+### ABAC validado en DEV
+
+El baseline de grants se conserva en **security/00_unity_catalog_grants.ipynb**. La tarea de notebook **security/01_abac_policies.py**, versionada en el repositorio como **security/01_abac_policies.ipynb**, implementa dos políticas controladas por el governed tag **data_classification**:
+
+| Política | Resultado observado |
+|---|---|
+| Column mask en **saleslt_dev.gold.sales_by_customer.customer_email** para **grp-dbx-analysts** | Admin/developer ve el email normal; analyst lo ve enmascarado. |
+| Row filter en **salesjson_dev.gold.customer_sales_summary.country** para **grp-dbx-analysts** | Admin ve Costa Rica **34**, United States **24**, Mexico **19** y Colombia **15**: **92 total**. Analyst ve solo Costa Rica: **34**. |
+
+Las evidencias de grants y ABAC están separadas en **evidence/Security/UC_GRANTS/** y **evidence/Security/ABAC/**. Security DEV queda completada con grants + ABAC.
 
 ## ETL Sales JSON
 
@@ -198,7 +211,7 @@ En el repositorio se conservan como notebooks **.ipynb** bajo **process/salesjso
 
 ## Evidencias
 
-Carpeta: **evidence/salesjson/**
+Carpeta: **evidence/Medallion/salesjson/**
 
 - Bronze 150, Silver válido 146 y rechazado 4.
 - Source files y checkpoint de Auto Loader.
@@ -207,7 +220,7 @@ Carpeta: **evidence/salesjson/**
 - Resultados de las tres tablas Gold.
 - Silver 237057.40 = Gold 237057.40: PASS.
 
-Carpeta: **evidence/salescsv/**
+Carpeta: **evidence/Medallion/salescsv/**
 
 - Product Bronze 15 e Inventory Bronze 500.
 - Silver válido 496 y rechazado 4.
@@ -215,12 +228,17 @@ Carpeta: **evidence/salescsv/**
 - Gold product 15, Gold warehouse 3 y salida low stock.
 - Unit reconciliation, inventory value reconciliation y low-stock business rule: PASS.
 
-Carpeta: **evidence/saleslt/**
+Carpeta: **evidence/Medallion/saleslt/**
 
 - Conteos Azure SQL Federation contra Bronze para las cinco tablas: PASS.
 - Silver summary y evidencia de joins.
 - Outputs de **sales_by_product**, **sales_by_customer** y **monthly_sales_summary**.
 - Reconciliación 708690.07 en Silver, Product Gold y Monthly Gold: PASS.
+
+Seguridad:
+
+- **evidence/Security/UC_GRANTS/**: baseline de permisos y External Locations.
+- **evidence/Security/ABAC/**: configuración de policies, email con/sin mask y row filter con admin/developer versus analyst.
 
 ## CI/CD
 
@@ -239,10 +257,11 @@ Sales JSON, Sales CSV y SalesLT seguirán **Bronze -> Silver -> Gold -> Metadata
 ## Estado de la entrega
 
 - Fundación DEV: completa.
+- Security DEV: completa con grants de Unity Catalog + ABAC.
 - Sales JSON Bronze/Silver/Gold/metadata: completo y validado en DEV.
 - Sales CSV Bronze/Silver/Gold/metadata: completo y validado en DEV.
 - SalesLT private federation/Bronze/Silver/Gold/metadata: completo y validado en DEV.
 - Validaciones, reconciliaciones y evidencias de los tres ETL: completas.
 - Rama de trabajo: **dev_qa**.
 - Siguiente fase: implementación de Bundles/Jobs.
-- Después: despliegue PROD; ABAC, ADF y visualización final continúan pendientes.
+- Después: despliegue PROD; ADF y visualización final continúan pendientes.
