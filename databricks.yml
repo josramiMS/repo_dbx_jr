@@ -21,6 +21,25 @@ targets:
       host: https://adb-7405608715976720.0.azuredatabricks.net
     variables:
       environment: dev
+    resources:
+      jobs:
+        salesjson_medallion:
+          trigger:
+            pause_status: PAUSED
+            file_arrival:
+              url: abfss://landing@stcentralusjrdev.dfs.core.windows.net/salesjson/incoming/
+              min_time_between_triggers_seconds: 900
+              wait_after_last_change_seconds: 60
+        salescsv_medallion:
+          schedule:
+            quartz_cron_expression: "0 0/15 * * * ?"
+            timezone_id: UTC
+            pause_status: PAUSED
+        saleslt_medallion:
+          schedule:
+            quartz_cron_expression: "0 5/15 * * * ?"
+            timezone_id: UTC
+            pause_status: PAUSED
 
   # Prepared for promotion only; do not deploy from dev_qa.
   prod:

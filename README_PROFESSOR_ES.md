@@ -242,7 +242,7 @@ Seguridad:
 
 ## Automatización DEV
 
-[Databricks Declarative Automation Bundles](https://docs.databricks.com/aws/en/dev-tools/bundles/jobs-tutorial) define tres Jobs YAML bajo un mismo bundle. Todos ejecutan Bronze -> Silver -> Gold con `environment=dev`, un ingestion timestamp común y Run As **sp-centraulus-dbx-main**.
+[Databricks Declarative Automation Bundles](https://docs.databricks.com/aws/en/dev-tools/bundles/jobs-tutorial) define tres Jobs YAML bajo un mismo bundle. Todos ejecutan Bronze -> Silver -> Gold con `environment=dev`, un ingestion timestamp común y Run As **sp-centraulus-dbx-main**. El deployer actual en DEV es el usuario interactivo **josrami**; **sp-centraulus-dbx-main** es la identidad `run_as` de los Jobs, no la identidad que ejecutó el deploy del Bundle.
 
 ~~~text
 databricks.yml
@@ -252,11 +252,13 @@ resources/
 └── saleslt.job.yml
 ~~~
 
-- **salesjson_medallion**: Serverless Jobs.
-- **salescsv_medallion**: classic shared single-node Jobs Compute con DBR 17.3 LTS, `Standard_D4ds_v4`, Photon, Standard access mode, `num_workers: 0` y sin autoscaling.
-- **saleslt_medallion**: Serverless Jobs sobre `fc_saleslt_dev`; la conexión federada usa **sp-centraulus-azsql** y el runtime usa **sp-centraulus-dbx-main**.
+- **salesjson_medallion**: Serverless Jobs. Bronze tiene 2 retries con intervalo de 30 s; Silver y Gold, 1 retry con 30 s. Usa File Arrival sobre `abfss://landing@stcentralusjrdev.dfs.core.windows.net/salesjson/incoming/`, con intervalo mínimo de 15 minutos y quiet period de 60 s.
+- **salescsv_medallion**: classic shared single-node Jobs Compute con DBR 17.3 LTS, `Standard_D4ds_v4`, Photon, Standard access mode, `num_workers: 0` y sin autoscaling. Todas las tareas tienen 1 retry con intervalo de 30 s. Su schedule de evidencia corre cada 15 minutos en UTC (`:00/:15/:30/:45`).
+- **saleslt_medallion**: Serverless Jobs sobre `fc_saleslt_dev`; la conexión federada usa **sp-centraulus-azsql** y el runtime usa **sp-centraulus-dbx-main**. Bronze tiene 3 retries con intervalo de 60 s; Silver y Gold, 1 retry con 30 s. Su schedule de evidencia corre cada 15 minutos en UTC, desplazado 5 minutos respecto a CSV (`:05/:20/:35/:50`).
 
-Los notebooks 98 de metadata y 99 de validation se conservan para documentación y verificación, pero no forman parte del flujo operativo de los Jobs. `bundle validate`, `bundle deploy`, ambos Jobs nuevos y `bundle summary` se completaron correctamente en DEV. No se ha desplegado PROD.
+Todas las tareas configuradas permiten retry en timeout. Los tres triggers se validaron temporalmente como `UNPAUSED` y su estado final en YAML y Databricks es `PAUSED`, evitando ejecuciones y costos innecesarios. Estos triggers sirven como evidencia operacional de Jobs; ADF se añadirá después como orquestador superior. No existen triggers PROD.
+
+Los notebooks 98 de metadata y 99 de validation se conservan para documentación y verificación, pero no forman parte del flujo operativo de los Jobs. `bundle validate`, `bundle deploy`, `bundle summary` y la inspección de los tres Jobs con la CLI se completaron correctamente en DEV. La evidencia y el checklist de screenshots están en `evidence/Automation/Bundles/`: validación/deploy exitosos, Job IDs, retries, File Arrival, schedules y estado final `PAUSED`. No se ha desplegado PROD.
 
 ## Estado de la entrega
 
@@ -266,6 +268,6 @@ Los notebooks 98 de metadata y 99 de validation se conservan para documentación
 - Sales CSV Bronze/Silver/Gold/metadata: completo y validado en DEV.
 - SalesLT private federation/Bronze/Silver/Gold/metadata: completo y validado en DEV.
 - Validaciones, reconciliaciones y evidencias de los tres ETL: completas.
-- Bundle DEV y Jobs SalesJSON/SalesCSV/SalesLT: desplegados; SalesCSV y SalesLT ejecutados con resultado SUCCESS.
+- Bundle DEV y Jobs SalesJSON/SalesCSV/SalesLT: desplegados; Phase 5.3 de operational hardening completada con retries explícitos y triggers finales `PAUSED`.
 - Rama de trabajo: **dev_qa**.
 - Siguiente fase: despliegue PROD; ADF y visualización final continúan pendientes.

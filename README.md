@@ -110,7 +110,7 @@ In DEV, Azure SQL SalesLT is exposed through the Lakehouse Federation Foreign Ca
 | **admins** | Environment bootstrap, ownership, and administration. |
 | **grp-dbx-developers** | Microsoft Entra account group for engineering in DEV and read access in PROD. |
 | **grp-dbx-analysts** | Microsoft Entra account group with Gold-only consumption. |
-| **sp-centraulus-dbx-main** | Bundle deployment and Job run identity. Application ID: **acc15410-5c5f-473e-bc6f-61b7946176a2**. |
+| **sp-centraulus-dbx-main** | Job `run_as` identity. Application ID: **acc15410-5c5f-473e-bc6f-61b7946176a2**. The current DEV bundle deployer is the interactive user **josrami**, not this service principal. |
 | **sp-centraulus-azsql** | Connection identity used by the DEV SalesLT Azure SQL federated connection. |
 
 Main Unity Catalog grants:
@@ -404,7 +404,7 @@ The environment, security, and ETL notebooks accept **environment=dev|prod**; th
 
 ## DEV automation with Databricks Bundles
 
-[Databricks Declarative Automation Bundles](https://docs.databricks.com/aws/en/dev-tools/bundles/jobs-tutorial), formerly Databricks Asset Bundles, version the DEV Jobs as YAML resources. The bundle-level `run_as` is **sp-centraulus-dbx-main** (application ID **acc15410-5c5f-473e-bc6f-61b7946176a2**) for all three workloads.
+[Databricks Declarative Automation Bundles](https://docs.databricks.com/aws/en/dev-tools/bundles/jobs-tutorial), formerly Databricks Asset Bundles, version the DEV Jobs as YAML resources. The bundle-level `run_as` is **sp-centraulus-dbx-main** (application ID **acc15410-5c5f-473e-bc6f-61b7946176a2**) for all three workloads. The DEV deployer remains the authenticated interactive user **josrami**; deployment identity and Job runtime identity are intentionally documented as separate roles.
 
 Implemented structure:
 
@@ -424,11 +424,15 @@ Sales CSV : Bronze -> Silver -> Gold
 SalesLT   : Bronze -> Silver -> Gold
 ~~~
 
-| Resource key | DEV compute | Configuration |
-|---|---|---|
-| **salesjson_medallion** | Serverless Jobs | Three sequential notebook tasks |
-| **salescsv_medallion** | Classic shared single-node Jobs Compute | DBR 17.3 LTS (`17.3.x-scala2.13`), `Standard_D4ds_v4`, Photon, Standard access mode, `num_workers: 0`, no autoscaling |
-| **saleslt_medallion** | Serverless Jobs | Three sequential tasks reading **fc_saleslt_dev**; the federation connection uses **sp-centraulus-azsql** |
+| Resource key | DEV compute | Explicit retry policy | DEV operational trigger |
+|---|---|---|---|
+| **salesjson_medallion** | Serverless Jobs | Bronze: 2 retries / 30 s; Silver and Gold: 1 retry / 30 s | File Arrival on `abfss://landing@stcentralusjrdev.dfs.core.windows.net/salesjson/incoming/`; 900 s minimum interval and 60 s quiet period |
+| **salescsv_medallion** | Classic shared single-node Jobs Compute: DBR 17.3 LTS, `Standard_D4ds_v4`, Photon, Standard access mode, `num_workers: 0`, no autoscaling | All tasks: 1 retry / 30 s | Every 15 minutes in UTC (`:00/:15/:30/:45`) |
+| **saleslt_medallion** | Serverless Jobs reading **fc_saleslt_dev**; federation uses **sp-centraulus-azsql** | Bronze: 3 retries / 60 s; Silver and Gold: 1 retry / 30 s | Every 15 minutes in UTC, offset by 5 minutes (`:05/:20/:35/:50`) |
+
+Every explicit policy sets `retry_on_timeout: true`. The retries are safe because the workloads use checkpoints or idempotent Delta MERGE patterns rather than blind duplicate inserts.
+
+The three DEV triggers were deployed briefly as `UNPAUSED` to verify that the Jobs API accepted them, then redeployed as `PAUSED`. They remain paused in the repository and workspace to avoid unnecessary executions and cost. They are evidence-oriented Job triggers, not the final enterprise orchestration layer; ADF remains planned as the higher-level orchestrator. No trigger is configured for the PROD target.
 
 The `98_metadata_documentation.ipynb` and `99_phase_validation.ipynb` notebooks remain available for documentation and audit validation, but are intentionally excluded from the recurring operational Jobs.
 
@@ -443,6 +447,8 @@ databricks bundle run -t dev saleslt_medallion
 databricks bundle summary -t dev
 ~~~
 
+Phase 5.3 evidence belongs under `evidence/Automation/Bundles/`. Capture the successful final validation/deployment, the bundle summary with all three Job IDs, each Job's retry settings, the SalesJSON File Arrival configuration, both UTC schedules, and the final `PAUSED` status. The folder's Phase 5.3 evidence guide records the CLI evidence and exact screenshot checklist.
+
 The **dev_qa** branch deploys to DEV; promotion to **main** will deploy to PROD later. No PROD bundle deployment has been performed. Workload identity federation/OIDC remains preferred so GitHub Actions does not depend on a stored client secret.
 
 ## Project status
@@ -451,7 +457,7 @@ The **dev_qa** branch deploys to DEV; promotion to **main** will deploy to PROD 
 - Sales JSON Bronze, Silver, Gold, metadata, validation, and evidence: complete in DEV.
 - Sales CSV Bronze, Silver, Gold, metadata, validation, and evidence: complete in DEV.
 - SalesLT private federation, Bronze, Silver, Gold, metadata, validation, and evidence: complete in DEV.
-- DEV Bundle validation and deployment: complete; SalesJSON, SalesCSV, and SalesLT operational Jobs are present, and the two newly added Jobs completed successfully.
+- DEV Bundle validation, deployment, and Phase 5.3 operational hardening: complete; explicit retries and evidence triggers are deployed, and all triggers are left `PAUSED`.
 - Current working branch: **dev_qa**.
 - Next phase: PROD bootstrap and workload deployment remain pending.
 - ADF and final visualization: pending.
