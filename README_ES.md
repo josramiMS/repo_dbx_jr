@@ -61,7 +61,7 @@ Silver 708690.07 = Product Gold 708690.07 = Monthly Gold 708690.07 (PASS)
 | Databricks workspace | **dbw-centralus-dev01** | **dbw-centralus-prod01** |
 | ADLS Gen2 | **stcentralusjrdev** | **stcentralusjrprod** |
 | Databricks Access Connector | **dbac-centralus-dbx-dev** | **dbac-centralus-dbx-prod** |
-| Storage Credential de Unity Catalog | **dbac_centralus_dbx_dev** | **dbac_centralus_dbx_pro** |
+| Storage Credential de Unity Catalog | **dbac_centralus_dbx_dev** | **dbac_centralus_dbx_prod** |
 | External Locations | **ext_landing_dev**, **ext_lakehouse_dev**, **ext_streaming_dev** | **ext_landing_prod**, **ext_lakehouse_prod**, **ext_streaming_prod** |
 | Catálogos | **saleslt_dev**, **salesjson_dev**, **salescsv_dev** | **saleslt_prod**, **salesjson_prod**, **salescsv_prod** |
 
