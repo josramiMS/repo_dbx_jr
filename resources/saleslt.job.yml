@@ -1,0 +1,30 @@
+resources:
+  jobs:
+    saleslt_medallion:
+      name: SalesLT Medallion
+      description: Serverless Bronze-to-Gold processing for the SalesLT workload.
+      tasks:
+        - task_key: bronze_ingestion
+          notebook_task:
+            notebook_path: ../process/saleslt/01_bronze_ingestion.ipynb
+            base_parameters:
+              environment: ${var.environment}
+              ingestion_timestamp: "{{job.start_time.iso_datetime}}"
+
+        - task_key: silver_transformation
+          depends_on:
+            - task_key: bronze_ingestion
+          notebook_task:
+            notebook_path: ../process/saleslt/02_silver_transformation.ipynb
+            base_parameters:
+              environment: ${var.environment}
+              ingestion_timestamp: "{{job.start_time.iso_datetime}}"
+
+        - task_key: gold_analytics
+          depends_on:
+            - task_key: silver_transformation
+          notebook_task:
+            notebook_path: ../process/saleslt/03_gold_analytics.ipynb
+            base_parameters:
+              environment: ${var.environment}
+              ingestion_timestamp: "{{job.start_time.iso_datetime}}"

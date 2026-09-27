@@ -4,7 +4,7 @@
 
 ## Resumen ejecutivo
 
-El proyecto implementa una arquitectura lakehouse gobernada en Azure Databricks. La fundación DEV, Security DEV —grants de Unity Catalog + ABAC— y los tres ETL —Sales JSON, Sales CSV y SalesLT— están completos y validados de extremo a extremo en DEV. La rama actual es **dev_qa**. Databricks Declarative Automation Bundles + Jobs en DEV es la siguiente fase; PROD, ADF y los extras restantes siguen pendientes.
+El proyecto implementa una arquitectura lakehouse gobernada en Azure Databricks. La fundación DEV, Security DEV —grants de Unity Catalog + ABAC— y los tres ETL —Sales JSON, Sales CSV y SalesLT— están completos y validados de extremo a extremo en DEV. Databricks Declarative Automation Bundles + Jobs también está desplegado y validado en DEV desde **dev_qa**. PROD, ADF y los extras restantes siguen pendientes.
 
 ~~~text
 15 JSON files / 150 Bronze rows
@@ -61,7 +61,7 @@ SalesLT: Azure SQL privado -> fc_saleslt_dev -> 5 Bronze snapshots
 | SalesLT Silver | customers/products/sales_order_lines; joins y moneda a 2 decimales | 02_silver_transformation + evidencia de join | 847 / 295 / 542 |
 | SalesLT Gold | sales_by_product, sales_by_customer, monthly_sales_summary; aggregations y ranking | 03_gold_analytics + outputs | Completo |
 | SalesLT reconciliación | Silver, Product Gold y Monthly Gold | 99_phase_validation + evidence/Medallion/saleslt/ | 708690.07 en las 3 capas; PASS |
-| CI/CD | Declarative Automation Bundles; Jobs YAML | Decisión de diseño documentada | Implementación pendiente |
+| CI/CD | Declarative Automation Bundles; tres Jobs YAML | Bundle validado/desplegado y Jobs ejecutados en DEV | Completo en DEV |
 
 ## Recursos
 
@@ -240,9 +240,9 @@ Seguridad:
 - **evidence/Security/UC_GRANTS/**: baseline de permisos y External Locations.
 - **evidence/Security/ABAC/**: configuración de policies, email con/sin mask y row filter con admin/developer versus analyst.
 
-## CI/CD
+## Automatización DEV
 
-La siguiente fase implementará [Databricks Declarative Automation Bundles](https://docs.databricks.com/aws/en/dev-tools/bundles/jobs-tutorial) con Jobs definidos en YAML. La decisión está tomada, pero los Bundles y Jobs todavía no están implementados.
+[Databricks Declarative Automation Bundles](https://docs.databricks.com/aws/en/dev-tools/bundles/jobs-tutorial) define tres Jobs YAML bajo un mismo bundle. Todos ejecutan Bronze -> Silver -> Gold con `environment=dev`, un ingestion timestamp común y Run As **sp-centraulus-dbx-main**.
 
 ~~~text
 databricks.yml
@@ -252,7 +252,11 @@ resources/
 └── saleslt.job.yml
 ~~~
 
-Sales JSON, Sales CSV y SalesLT seguirán **Bronze -> Silver -> Gold -> Metadata -> Validation**. El flujo será bundle validate, bundle deploy y bundle run. **dev_qa** desplegará a DEV; **main** a PROD; los Jobs productivos usarán **sp-centraulus-dbx-main** como Run as.
+- **salesjson_medallion**: Serverless Jobs.
+- **salescsv_medallion**: classic shared single-node Jobs Compute con DBR 17.3 LTS, `Standard_D4ds_v4`, Photon, Standard access mode, `num_workers: 0` y sin autoscaling.
+- **saleslt_medallion**: Serverless Jobs sobre `fc_saleslt_dev`; la conexión federada usa **sp-centraulus-azsql** y el runtime usa **sp-centraulus-dbx-main**.
+
+Los notebooks 98 de metadata y 99 de validation se conservan para documentación y verificación, pero no forman parte del flujo operativo de los Jobs. `bundle validate`, `bundle deploy`, ambos Jobs nuevos y `bundle summary` se completaron correctamente en DEV. No se ha desplegado PROD.
 
 ## Estado de la entrega
 
@@ -262,6 +266,6 @@ Sales JSON, Sales CSV y SalesLT seguirán **Bronze -> Silver -> Gold -> Metadata
 - Sales CSV Bronze/Silver/Gold/metadata: completo y validado en DEV.
 - SalesLT private federation/Bronze/Silver/Gold/metadata: completo y validado en DEV.
 - Validaciones, reconciliaciones y evidencias de los tres ETL: completas.
+- Bundle DEV y Jobs SalesJSON/SalesCSV/SalesLT: desplegados; SalesCSV y SalesLT ejecutados con resultado SUCCESS.
 - Rama de trabajo: **dev_qa**.
-- Siguiente fase: implementación de Bundles/Jobs.
-- Después: despliegue PROD; ADF y visualización final continúan pendientes.
+- Siguiente fase: despliegue PROD; ADF y visualización final continúan pendientes.

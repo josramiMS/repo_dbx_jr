@@ -1,0 +1,31 @@
+# Declarative Automation Bundle for the medallion workloads.
+bundle:
+  name: dbx-medallion-automation
+
+include:
+  - resources/*.job.yml
+
+variables:
+  environment:
+    description: Environment passed to the workload notebooks.
+    default: dev
+
+run_as:
+  service_principal_name: acc15410-5c5f-473e-bc6f-61b7946176a2
+
+targets:
+  dev:
+    default: true
+    mode: development
+    workspace:
+      host: https://adb-7405608715976720.0.azuredatabricks.net
+    variables:
+      environment: dev
+
+  # Prepared for promotion only; do not deploy from dev_qa.
+  prod:
+    mode: production
+    workspace:
+      host: https://adb-7405604697927684.4.azuredatabricks.net
+    variables:
+      environment: prod

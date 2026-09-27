@@ -6,7 +6,7 @@
 
 Este repositorio implementa una arquitectura lakehouse gobernada en Azure Databricks con recursos separados para DEV y PROD, Unity Catalog, identidades de Microsoft Entra, almacenamiento externo en ADLS Gen2 y un diseño ETL Medallion.
 
-La fundación DEV, el baseline de grants de Unity Catalog, los controles ABAC y los tres ETL —Sales JSON, Sales CSV y SalesLT— están funcionalmente completos, documentados y validados en Databricks Serverless compute. La rama de trabajo actual es **dev_qa**. La siguiente fase es implementar Databricks Declarative Automation Bundles y Jobs definidos en YAML en DEV; el despliegue en PROD, ADF y los entregables opcionales restantes continúan explícitamente pendientes.
+La fundación DEV, el baseline de grants de Unity Catalog, los controles ABAC y los tres ETL —Sales JSON, Sales CSV y SalesLT— están funcionalmente completos y documentados. Databricks Declarative Automation Bundles está desplegado y validado en DEV desde la rama **dev_qa**: SalesJSON y SalesLT usan Serverless Jobs, mientras SalesCSV usa classic single-node Jobs Compute. El despliegue en PROD, ADF y los entregables opcionales restantes continúan explícitamente pendientes.
 
 ~~~text
 15 archivos JSON / 150 filas Bronze
@@ -96,7 +96,7 @@ En DEV, Azure SQL SalesLT se expone mediante el Foreign Catalog de Lakehouse Fed
 | **admins** | Bootstrap, ownership y administración. |
 | **grp-dbx-developers** | Ingeniería en DEV y lectura en PROD. |
 | **grp-dbx-analysts** | Consumo exclusivo de Gold. |
-| **sp-centraulus-dbx-main** | Run as de Jobs y futura identidad de deployment. Application ID: **acc15410-5c5f-473e-bc6f-61b7946176a2**. |
+| **sp-centraulus-dbx-main** | Identidad de deployment del Bundle y Run As de los Jobs. Application ID: **acc15410-5c5f-473e-bc6f-61b7946176a2**. |
 | **sp-centraulus-azsql** | Identidad usada por la conexión federada Azure SQL / SalesLT en DEV. |
 
 | Principal | Catálogos y schemas | landing | lakehouse | streaming |
@@ -378,9 +378,9 @@ repo_dbx_jr/
 
 Los notebooks usan **environment=dev|prod** para seleccionar el storage y catálogo correctos. Los tres ETL fueron validados funcionalmente en DEV. La conexión, el private network path y el procesamiento de SalesLT se validaron en Databricks Serverless compute; Sales JSON también se validó mediante su ruta Serverless/NCC.
 
-## CI/CD
+## Automatización DEV con Databricks Bundles
 
-La siguiente fase implementará [Databricks Declarative Automation Bundles](https://docs.databricks.com/aws/en/dev-tools/bundles/jobs-tutorial), anteriormente Databricks Asset Bundles. Los Jobs se versionarán como recursos YAML. Aún no se ha implementado ningún Bundle ni Job YAML.
+[Databricks Declarative Automation Bundles](https://docs.databricks.com/aws/en/dev-tools/bundles/jobs-tutorial), anteriormente Databricks Asset Bundles, versiona los Jobs DEV como recursos YAML. El `run_as` común definido a nivel de bundle es **sp-centraulus-dbx-main** (application ID **acc15410-5c5f-473e-bc6f-61b7946176a2**) para los tres workloads.
 
 ~~~text
 databricks.yml
@@ -390,15 +390,28 @@ resources/
 └── saleslt.job.yml
 ~~~
 
-Los tres Jobs seguirán **Bronze -> Silver -> Gold -> Metadata -> Validation** para Sales JSON, Sales CSV y SalesLT. El flujo esperado es:
+Cada Job operativo sigue **Bronze -> Silver -> Gold** y pasa `environment=dev` junto con el mismo ingestion timestamp `{{job.start_time.iso_datetime}}` a sus tres tareas.
+
+| Resource key | Compute DEV | Configuración |
+|---|---|---|
+| **salesjson_medallion** | Serverless Jobs | Tres notebooks secuenciales |
+| **salescsv_medallion** | Classic shared single-node Jobs Compute | DBR 17.3 LTS (`17.3.x-scala2.13`), `Standard_D4ds_v4`, Photon, Standard access mode, `num_workers: 0`, sin autoscaling |
+| **saleslt_medallion** | Serverless Jobs | Tres tareas secuenciales que leen **fc_saleslt_dev**; la conexión federada usa **sp-centraulus-azsql** |
+
+Los notebooks `98_metadata_documentation.ipynb` y `99_phase_validation.ipynb` siguen disponibles para documentación y validación de auditoría, pero quedan intencionalmente fuera de los Jobs operativos recurrentes.
+
+Flujo DEV validado:
 
 ~~~text
-databricks bundle validate -t <target>
-databricks bundle deploy -t <target>
-databricks bundle run -t <target> salesjson_job
+databricks bundle validate -t dev
+databricks bundle deploy -t dev
+databricks bundle run -t dev salesjson_medallion
+databricks bundle run -t dev salescsv_medallion
+databricks bundle run -t dev saleslt_medallion
+databricks bundle summary -t dev
 ~~~
 
-La rama **dev_qa** desplegará a DEV y **main** a PROD. Los Jobs productivos usarán **sp-centraulus-dbx-main** como Run as. Se prefiere workload identity federation/OIDC para evitar un client secret almacenado.
+La rama **dev_qa** despliega a DEV; la promoción a **main** desplegará a PROD más adelante. Todavía no se ha ejecutado ningún despliegue del bundle en PROD. Se mantiene la preferencia por workload identity federation/OIDC para evitar un client secret almacenado.
 
 ## Estado
 
@@ -406,7 +419,7 @@ La rama **dev_qa** desplegará a DEV y **main** a PROD. Los Jobs productivos usa
 - Sales JSON Bronze, Silver, Gold, metadata, validación y evidencias: completos en DEV.
 - Sales CSV Bronze, Silver, Gold, metadata, validación y evidencias: completos en DEV.
 - SalesLT private federation, Bronze, Silver, Gold, metadata, validación y evidencias: completos en DEV.
+- Validación y despliegue del Bundle DEV: completos; los Jobs operativos SalesJSON, SalesCSV y SalesLT están publicados, y los dos Jobs nuevos terminaron correctamente.
 - Rama de trabajo actual: **dev_qa**.
-- Siguiente fase: Bundle YAML y Databricks Jobs; la decisión de usar Declarative Automation Bundles está completa, pero su implementación está pendiente.
-- Después de Bundles/Jobs: bootstrap y despliegue de workloads en PROD pendientes.
+- Siguiente fase: bootstrap y despliegue de workloads en PROD pendientes.
 - ADF y visualización final: pendientes.
