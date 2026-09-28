@@ -1,0 +1,117 @@
+name: Deploy Databricks Bundle to PROD
+
+on:
+  workflow_dispatch:
+
+  push:
+    branches:
+      - main
+
+permissions:
+  id-token: write
+  contents: read
+
+concurrency:
+  group: databricks-prod-deployment
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Validate and deploy PROD bundle
+    runs-on: ubuntu-latest
+    environment: prod
+
+    env:
+      DATABRICKS_AUTH_TYPE: github-oidc
+      DATABRICKS_HOST: ${{ vars.DATABRICKS_HOST }}
+      DATABRICKS_CLIENT_ID: ${{ vars.DATABRICKS_CLIENT_ID }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          ref: main
+
+      - name: Install Databricks CLI
+        uses: databricks/setup-cli@main
+
+      - name: Verify Databricks authentication
+        run: databricks current-user me
+
+      - name: Validate PROD bundle
+        run: databricks bundle validate -t prod
+
+      - name: Deploy PROD bundle
+        run: databricks bundle deploy -t prod
+
+      - name: Show PROD bundle resources
+        run: databricks bundle summary -t prod
+
+  run_salescsv:
+    name: Run SalesCSV PROD
+    needs: deploy
+    runs-on: ubuntu-latest
+    environment: prod
+
+    env:
+      DATABRICKS_AUTH_TYPE: github-oidc
+      DATABRICKS_HOST: ${{ vars.DATABRICKS_HOST }}
+      DATABRICKS_CLIENT_ID: ${{ vars.DATABRICKS_CLIENT_ID }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          ref: main
+
+      - name: Install Databricks CLI
+        uses: databricks/setup-cli@main
+
+      - name: Run SalesCSV Medallion
+        run: databricks bundle run -t prod salescsv_medallion
+
+  run_salesjson:
+    name: Run SalesJSON PROD
+    needs: deploy
+    runs-on: ubuntu-latest
+    environment: prod
+
+    env:
+      DATABRICKS_AUTH_TYPE: github-oidc
+      DATABRICKS_HOST: ${{ vars.DATABRICKS_HOST }}
+      DATABRICKS_CLIENT_ID: ${{ vars.DATABRICKS_CLIENT_ID }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          ref: main
+
+      - name: Install Databricks CLI
+        uses: databricks/setup-cli@main
+
+      - name: Run SalesJSON Medallion
+        run: databricks bundle run -t prod salesjson_medallion
+
+  run_saleslt:
+    name: Run SalesLT PROD
+    needs: deploy
+    runs-on: ubuntu-latest
+    environment: prod
+
+    env:
+      DATABRICKS_AUTH_TYPE: github-oidc
+      DATABRICKS_HOST: ${{ vars.DATABRICKS_HOST }}
+      DATABRICKS_CLIENT_ID: ${{ vars.DATABRICKS_CLIENT_ID }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          ref: main
+
+      - name: Install Databricks CLI
+        uses: databricks/setup-cli@main
+
+      - name: Run SalesLT Medallion
+        run: databricks bundle run -t prod saleslt_medallion
