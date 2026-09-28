@@ -46,7 +46,7 @@ SalesLT: Azure SQL privado -> fc_saleslt_dev -> 5 Bronze snapshots
 | Dataset incremental | 15 archivos NDJSON | **datasets/salesjson/** | Completo |
 | Auto Loader | cloudFiles, Managed File Events, availableNow | Notebook Bronze | Validado |
 | Checkpoint/schema | Rutas separadas en streaming | Notebook y evidencia | Validado |
-| Schema evolution | shipping_priority; addNewColumns + mergeSchema | Evidencia | Validado |
+| Schema evolution | shipping_priority; addNewColumns + mergeSchema | Evidencia | Validado en DEV; PROD admite el schema base actual |
 | Calidad Silver | Casts, reglas y rejected_orders | Notebook Silver | 146 válidos / 4 rechazados |
 | Idempotencia | Delta MERGE por order_id y timestamp | Notebook Silver | Implementado |
 | Gold | Resúmenes daily/category/customer | Notebook Gold | Completo |
@@ -106,6 +106,8 @@ El baseline de grants se conserva en **security/00_unity_catalog_grants.ipynb**.
 Las evidencias de grants y ABAC están separadas en **evidence/Security/UC_GRANTS/** y **evidence/Security/ABAC/**. Security DEV queda completada con grants + ABAC.
 
 ## ETL Sales JSON
+
+Las cifras y evidencias de **shipping_priority** de esta sección corresponden a DEV. El dataset actual de PROD contiene solo los cinco archivos JSON con schema base, por lo que puede operar sin esa columna.
 
 Bronze:
 
@@ -215,7 +217,7 @@ Carpeta: **evidence/Medallion/salesjson/**
 
 - Bronze 150, Silver válido 146 y rechazado 4.
 - Source files y checkpoint de Auto Loader.
-- Schema evolution con shipping_priority.
+- Schema evolution con shipping_priority en DEV; PROD admite el schema base actual de cinco archivos.
 - Cuatro reglas de rechazo, una fila por regla.
 - Resultados de las tres tablas Gold.
 - Silver 237057.40 = Gold 237057.40: PASS.

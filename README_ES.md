@@ -65,7 +65,7 @@ Silver 708690.07 = Product Gold 708690.07 = Monthly Gold 708690.07 (PASS)
 | External Locations | **ext_landing_dev**, **ext_lakehouse_dev**, **ext_streaming_dev** | **ext_landing_prod**, **ext_lakehouse_prod**, **ext_streaming_prod** |
 | Catálogos | **saleslt_dev**, **salesjson_dev**, **salescsv_dev** | **saleslt_prod**, **salesjson_prod**, **salescsv_prod** |
 
-**dbac_centralus_dbx_pro** es el nombre exacto configurado actualmente en **prepenv/00_environment_setup.ipynb**.
+El nombre exacto del Storage Credential de PROD es **dbac_centralus_dbx_prod**, como está configurado en **prepenv/00_environment_setup.ipynb**.
 
 Los Access Connectors usan Managed Identity para acceder a ADLS. Los Storage Credentials y External Locations de Unity Catalog forman el límite gobernado; los notebooks no almacenan account keys ni SAS tokens.
 
@@ -134,6 +134,8 @@ La tarea de notebook de Databricks **security/01_abac_policies.py** define el co
 
 El generador reproducible crea 15 archivos JSON Lines con 10 órdenes cada uno. Los archivos 001-005 usan el schema base; 006-010 incluyen cuatro errores deliberados; 011-015 agregan **shipping_priority** para probar schema evolution. Los errores son quantity = 0, unit_price = -25.00, discount = 1.25 y customer_id = null.
 
+La secuencia completa de 15 archivos y la evidencia de schema evolution descrita a continuación corresponden a DEV. El dataset actual de PROD contiene solo los cinco archivos con schema base (001-005), por lo que **shipping_priority** puede no existir allí sin que esto represente un fallo.
+
 ### Bronze
 
 Notebook: **process/salesjson/01_bronze_ingestion.ipynb**
@@ -179,7 +181,7 @@ Notebook: **process/salesjson/03_gold_analytics.ipynb**
 
 Gold lee solo desde Silver. Las tres tablas Delta externas usan snapshot-style MERGE para actualizar, insertar y eliminar filas según el snapshot actual.
 
-## Validación y evidencias
+## Validación y evidencias de DEV
 
 Notebook: **process/salesjson/99_phase_validation.ipynb**
 
@@ -191,12 +193,12 @@ Notebook: **process/salesjson/99_phase_validation.ipynb**
 | Gold daily | **20** |
 | Gold category | **3** |
 | Gold customer | **92** |
-| Schema evolution | **shipping_priority presente** |
+| Schema evolution | **shipping_priority presente en DEV** |
 | Silver net revenue | **237057.40** |
 | Gold net revenue | **237057.40** |
 | Reconciliación | **PASS** |
 
-Las capturas en **evidence/Medallion/salesjson/** cubren layer counts, source files de Bronze, checkpoint, schema evolution, rechazos, resultados Gold y reconciliación Silver-Gold.
+Las capturas de DEV en **evidence/Medallion/salesjson/** cubren layer counts, source files de Bronze, checkpoint, schema evolution, rechazos, resultados Gold y reconciliación Silver-Gold.
 
 ## ETL Sales CSV
 

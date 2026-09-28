@@ -42,15 +42,15 @@ targets:
             pause_status: PAUSED
 
   # Prepared for promotion only; do not deploy from dev_qa.
-prod:
-  mode: production
+  prod:
+    mode: production
 
-  workspace:
-    host: https://adb-7405604697927684.4.azuredatabricks.net
-    root_path: /Workspace/prod/ETLs
+    workspace:
+      host: https://adb-7405604697927684.4.azuredatabricks.net
+      root_path: /Workspace/prod/ETLs
 
-  git:
-    branch: main
+    git:
+      branch: main
 
-  variables:
-    environment: prod
+    variables:
+      environment: prod
