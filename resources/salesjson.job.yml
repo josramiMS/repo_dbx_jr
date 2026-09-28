@@ -1,0 +1,39 @@
+resources:
+  jobs:
+    salesjson_medallion:
+      name: SalesJSON Medallion
+      description: Serverless Bronze-to-Gold processing for the SalesJSON workload.
+      tasks:
+        - task_key: bronze_ingestion
+          max_retries: 2
+          min_retry_interval_millis: 30000
+          retry_on_timeout: true
+          notebook_task:
+            notebook_path: ../process/salesjson/01_bronze_ingestion.ipynb
+            base_parameters:
+              environment: ${var.environment}
+              ingestion_timestamp: "{{job.start_time.iso_datetime}}"
+
+        - task_key: silver_transformation
+          max_retries: 1
+          min_retry_interval_millis: 30000
+          retry_on_timeout: true
+          depends_on:
+            - task_key: bronze_ingestion
+          notebook_task:
+            notebook_path: ../process/salesjson/02_silver_transformation.ipynb
+            base_parameters:
+              environment: ${var.environment}
+              ingestion_timestamp: "{{job.start_time.iso_datetime}}"
+
+        - task_key: gold_analytics
+          max_retries: 1
+          min_retry_interval_millis: 30000
+          retry_on_timeout: true
+          depends_on:
+            - task_key: silver_transformation
+          notebook_task:
+            notebook_path: ../process/salesjson/03_gold_analytics.ipynb
+            base_parameters:
+              environment: ${var.environment}
+              ingestion_timestamp: "{{job.start_time.iso_datetime}}"
