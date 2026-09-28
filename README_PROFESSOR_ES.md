@@ -87,12 +87,14 @@ Los Access Connectors usan Managed Identity. Los nombres técnicos y comentarios
 | Principal | Acceso |
 |---|---|
 | **admins** | Administración y ownership. |
-| **grp-dbx-developers** | DEV: USE, CREATE TABLE, SELECT, MODIFY y External Locations requeridas. PROD: lectura. |
+| **grp-dbx-developers** | DEV: USE, CREATE TABLE, SELECT, MODIFY y External Locations requeridas. PROD: sin acceso directo. |
 | **grp-dbx-analysts** | USE y SELECT únicamente en Gold. |
 | **sp-centraulus-dbx-main** | Runtime de Jobs en schemas existentes; landing read; external table create; streaming read/write. |
 | **sp-centraulus-azsql** | Identidad de la conexión federada Azure SQL / SalesLT en DEV. |
 
 El ETL SP no recibe CREATE CATALOG, CREATE SCHEMA, MANAGE, OWNERSHIP ni acceso directo al Storage Credential.
+
+En PROD, developers no reciben grants; analysts consumen únicamente Gold y el Service Principal del ETL ejecuta las cargas.
 
 ### ABAC validado en DEV
 

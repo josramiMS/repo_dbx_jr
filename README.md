@@ -108,7 +108,7 @@ In DEV, Azure SQL SalesLT is exposed through the Lakehouse Federation Foreign Ca
 | Principal | Responsibility |
 |---|---|
 | **admins** | Environment bootstrap, ownership, and administration. |
-| **grp-dbx-developers** | Microsoft Entra account group for engineering in DEV and read access in PROD. |
+| **grp-dbx-developers** | Microsoft Entra account group for engineering in DEV; it has no direct access to PROD. |
 | **grp-dbx-analysts** | Microsoft Entra account group with Gold-only consumption. |
 | **sp-centraulus-dbx-main** | Job `run_as` identity. Application ID: **acc15410-5c5f-473e-bc6f-61b7946176a2**. The current DEV bundle deployer is the interactive user **josrami**, not this service principal. |
 | **sp-centraulus-azsql** | Connection identity used by the DEV SalesLT Azure SQL federated connection. |
@@ -119,11 +119,13 @@ Main Unity Catalog grants:
 |---|---|---|---|---|
 | Admin | Ownership and administration | Owner | Owner | Owner |
 | Developers in DEV | USE CATALOG; USE SCHEMA, CREATE TABLE, SELECT, MODIFY on Bronze, Silver, and Gold | READ FILES | CREATE EXTERNAL TABLE | READ FILES, WRITE FILES |
-| Developers in PROD | USE CATALOG; USE SCHEMA, SELECT | No direct grant | No direct grant | No direct grant |
+| Developers in PROD | No direct grant | No direct grant | No direct grant | No direct grant |
 | Analysts | USE CATALOG; USE SCHEMA and SELECT on Gold only | None | None | None |
 | ETL service principal | USE CATALOG; USE SCHEMA, CREATE TABLE, SELECT, MODIFY on all medallion schemas | READ FILES | CREATE EXTERNAL TABLE | READ FILES, WRITE FILES |
 
 The ETL service principal does not receive CREATE CATALOG, CREATE SCHEMA, MANAGE, OWNERSHIP, or direct access to the storage credential. Once an external Delta table is registered, data changes are governed through MODIFY; arbitrary writes to the lakehouse container are not granted.
+
+In PROD, developers have no direct access. Analysts consume Gold only, while the ETL service principal executes the workloads across Bronze, Silver, and Gold and uses the required external locations.
 
 ### DEV security baseline and ABAC
 

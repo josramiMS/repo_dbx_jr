@@ -94,7 +94,7 @@ En DEV, Azure SQL SalesLT se expone mediante el Foreign Catalog de Lakehouse Fed
 | Principal | Responsabilidad |
 |---|---|
 | **admins** | Bootstrap, ownership y administración. |
-| **grp-dbx-developers** | Ingeniería en DEV y lectura en PROD. |
+| **grp-dbx-developers** | Ingeniería en DEV; no tiene acceso directo a PROD. |
 | **grp-dbx-analysts** | Consumo exclusivo de Gold. |
 | **sp-centraulus-dbx-main** | Identidad `run_as` de los Jobs. Application ID: **acc15410-5c5f-473e-bc6f-61b7946176a2**. El deployer actual del Bundle en DEV es el usuario interactivo **josrami**, no este service principal. |
 | **sp-centraulus-azsql** | Identidad usada por la conexión federada Azure SQL / SalesLT en DEV. |
@@ -102,11 +102,13 @@ En DEV, Azure SQL SalesLT se expone mediante el Foreign Catalog de Lakehouse Fed
 | Principal | Catálogos y schemas | landing | lakehouse | streaming |
 |---|---|---|---|---|
 | Developers DEV | USE CATALOG; USE SCHEMA, CREATE TABLE, SELECT, MODIFY en las tres capas | READ FILES | CREATE EXTERNAL TABLE | READ FILES, WRITE FILES |
-| Developers PROD | USE CATALOG; USE SCHEMA, SELECT | Sin grant directo | Sin grant directo | Sin grant directo |
+| Developers PROD | Sin grant directo | Sin grant directo | Sin grant directo | Sin grant directo |
 | Analysts | USE CATALOG; USE SCHEMA y SELECT solo en Gold | Ninguno | Ninguno | Ninguno |
 | ETL SP | USE CATALOG; USE SCHEMA, CREATE TABLE, SELECT, MODIFY en las tres capas | READ FILES | CREATE EXTERNAL TABLE | READ FILES, WRITE FILES |
 
 El ETL SP no recibe CREATE CATALOG, CREATE SCHEMA, MANAGE, OWNERSHIP ni acceso directo al Storage Credential.
+
+En PROD, developers no tienen acceso directo. Analysts consumen únicamente Gold, mientras el Service Principal del ETL ejecuta las cargas en Bronze, Silver y Gold y usa las External Locations requeridas.
 
 ### Baseline de seguridad y ABAC en DEV
 
