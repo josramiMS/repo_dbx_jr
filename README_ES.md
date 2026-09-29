@@ -6,7 +6,7 @@
 
 Este repositorio implementa una arquitectura lakehouse gobernada en Azure Databricks con recursos separados para DEV y PROD, Unity Catalog, identidades de Microsoft Entra, almacenamiento externo en ADLS Gen2 y un diseño ETL Medallion.
 
-La fundación DEV, el baseline de grants de Unity Catalog, los controles ABAC, los tres ETL —Sales JSON, Sales CSV y SalesLT—, la automatización con Bundle y sus evidencias están funcionalmente completos y documentados. También están completos en PROD la fundación, los catálogos, los grants, ABAC aplicado y validado manualmente, el despliegue con GitHub Actions/OIDC, los cuatro Jobs y la orquestación con Azure Data Factory. ADF v2 **adf-centralus-prod** ahora ejecuta en paralelo los tres Jobs operativos de PROD mediante **pl_databricks_medallion_prod**; el primer pipeline end-to-end y todos los runs correlacionados en Databricks finalizaron correctamente. Las fases restantes son la capa de consumo y el cierre final de evidencias/limpieza.
+La fundación DEV, el baseline de grants de Unity Catalog, los controles ABAC, los tres ETL —Sales JSON, Sales CSV y SalesLT—, la automatización con Bundle y sus evidencias están funcionalmente completos y documentados. También están completos en PROD la fundación, los catálogos, los grants, ABAC aplicado y validado manualmente, el despliegue con GitHub Actions/OIDC, los cuatro Jobs y la orquestación con Azure Data Factory. ADF v2 **adf-centralus-prod** ahora ejecuta en paralelo los tres Jobs operativos de PROD mediante **pl_databricks_medallion_prod**; el primer pipeline end-to-end y todos los runs correlacionados en Databricks finalizaron correctamente. El consumo Power BI está completo: **Sales & Inventory Executive Overview** fue publicado y consulta Gold PROD mediante el Databricks SQL Warehouse con la identidad Data Analyst. Quedan el Genie Agent, la Databricks App opcional y el cierre final de evidencias/limpieza.
 
 ~~~text
 15 archivos JSON / 150 filas Bronze
@@ -358,6 +358,9 @@ repo_dbx_jr/
 │   │   └── README.md
 │   └── Metadata/
 │       └── README.md
+├── evidence/Consumption/
+│   └── PowerBI/
+│       └── README.md
 ├── evidence/Medallion/
 │   ├── salescsv/
 │   ├── salesjson/
@@ -474,9 +477,50 @@ Esa identidad tiene `CAN MANAGE RUN` sobre los tres Jobs PROD administrados por 
 
 El pipeline lanza en paralelo **SalesJSON Medallion**, **SalesCSV Medallion** y **SalesLT Medallion**. El retry de ADF es **0** porque los retries permanecen dentro de los Jobs de Databricks. **Metadata Documentation** es manual y queda intencionalmente fuera de ADF. El primer run end-to-end terminó con las tres actividades y el pipeline global en `Succeeded`, y los runs correspondientes se verificaron en Databricks. **Estado de la orquestación ADF: COMPLETE.** El checklist de evidencias está en **evidence/Automation/ADF/**.
 
+## Consumo con Power BI
+
+**Estado del consumo Power BI: COMPLETE.** Power BI Desktop y Power BI Service se conectan mediante el Azure Databricks SQL Warehouse a las tablas Gold de Unity Catalog en PROD:
+
+~~~text
+Power BI Desktop / Power BI Service
+                |
+                v
+Azure Databricks SQL Warehouse (PROD)
+                |
+                v
+Unity Catalog Gold PROD
+~~~
+
+La conexión usa la identidad **Data Analyst** y acceso de consumidor sobre Gold, no acceso de developer a PROD. Query History de Databricks confirma solicitudes con `Source=PowerBI`, el compute del SQL Warehouse PROD y `User=Data Analyst`.
+
+El reporte consume estas tablas Gold:
+
+- `saleslt_prod.gold.monthly_sales_summary`
+- `saleslt_prod.gold.sales_by_product`
+- `saleslt_prod.gold.sales_by_customer`
+- `salescsv_prod.gold.inventory_by_product`
+- `salescsv_prod.gold.inventory_by_warehouse`
+- `salescsv_prod.gold.low_stock_products`
+
+No se crearon relaciones artificiales entre tablas Gold agregadas. Cada visual consulta la tabla cuyo grain corresponde a su métrica. **Sales & Inventory Executive Overview** contiene **Total Revenue**, **Total Orders**, **Total Customers**, **Low Stock Products**, **Monthly Net Revenue**, **Net Revenue by Product Category**, **Inventory Value by Warehouse** y **Products Requiring Replenishment**. El reporte terminado se publicó correctamente en el workspace **DBXJR** de Power BI Service. Copilot no fue necesario para esta implementación.
+
+El checklist breve y el resto de las evidencias Power BI están en **evidence/Consumption/PowerBI/**.
+
 ## Evidencias representativas
 
-Aquí solo se muestran capturas representativas; el conjunto completo y normalizado se organiza bajo **evidence/Medallion/**, **evidence/Security/** y **evidence/Automation/**. El índice corto está en **evidence/README.md**.
+Aquí solo se muestran capturas representativas; el conjunto completo y normalizado se organiza bajo **evidence/Medallion/**, **evidence/Security/**, **evidence/Automation/** y **evidence/Consumption/**. El índice corto está en **evidence/README.md**.
+
+Query History de Databricks confirma las solicitudes de Power BI mediante el SQL Warehouse PROD como Data Analyst:
+
+![Query History de Databricks para Power BI](evidence/Consumption/PowerBI/01_databricks_query_history_powerbi.png)
+
+El reporte terminado en Power BI Desktop:
+
+![Dashboard de ventas e inventario en Power BI Desktop](evidence/Consumption/PowerBI/02_powerbi_desktop_dashboard.png)
+
+El reporte publicado en el workspace DBXJR de Power BI Service:
+
+![Dashboard publicado en Power BI Service](evidence/Consumption/PowerBI/03_powerbi_service_published_dashboard.png)
 
 Despliegue PROD completado correctamente por GitHub Actions:
 
@@ -511,6 +555,7 @@ Los conteos de SalesLT reconcilian entre SQL Federation y Bronze para las cinco 
 - Fundación DEV, grants de Unity Catalog, ABAC, ETL, validaciones, evidencias, Bundle y operational hardening Phase 5.3: completos.
 - Fundación PROD, catálogos, schemas, grants de Unity Catalog, ABAC aplicado y validado manualmente, CI/CD con GitHub OIDC, tres Jobs ETL Bronze-to-Gold exitosos, cleanup de ambiente explícito, despliegue/ejecución exitosa de **Metadata Documentation** y orquestación ADF: completos.
 - ADF v2 **adf-centralus-prod** ejecuta en paralelo los tres Jobs ETL de PROD mediante **pl_databricks_medallion_prod**; el primer pipeline end-to-end y los runs correlacionados en Databricks finalizaron correctamente.
+- Consumo Power BI: completo. **Sales & Inventory Executive Overview** está publicado en Power BI Service y consume Gold PROD mediante el Databricks SQL Warehouse como Data Analyst.
 - Este cierre documental se prepara en **dev_qa** sin merge automático a `main`.
 - Las capturas detalladas de metadata todavía deben completarse como evidencia, pero el despliegue y la ejecución PROD no están pendientes. Ejecutar `99_phase_validation` por separado solo cuando se requiera evidencia de auditoría o troubleshooting.
-- Pendiente: construir la capa de consumo (Dashboard y Genie, con App opcional) y completar la evidencia/limpieza final.
+- Consumo pendiente: Genie Agent y Databricks App opcional; después, cierre final de evidencias/limpieza.
