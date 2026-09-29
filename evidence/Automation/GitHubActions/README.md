@@ -10,7 +10,7 @@ Esta carpeta documenta el cierre exitoso del despliegue PROD mediante **.github/
 - [x] `04_github_actions_success.png` — workflow completo en verde: validate/deploy y los tres Jobs PROD.
 - [ ] `05_oidc_auth_success.png` — step `databricks current-user me` exitoso, sin exponer tokens ni secretos.
 - [x] `06_bundle_validate_deploy_summary.png` — `bundle summary -t prod` confirma target, ruta y Job IDs; el validate/deploy exitoso también queda visible en el workflow completo.
-- [x] `07_prod_jobs_overview.png` — los tres Jobs PROD visibles, con `run_as` y ejecuciones recientes exitosas.
+- [x] `07_prod_jobs_overview.png` — los cuatro Jobs PROD visibles, incluido **Metadata Documentation**, con `run_as` y ejecuciones recientes exitosas.
 - [x] `08_prod_workspace_bundle_files.png` — archivos del bundle desplegados bajo `/Workspace/prod/ETLs`.
 - [ ] `09_salescsv_prod_success.png` — run exitoso de SalesCSV PROD en classic single-node Job Compute.
 - [ ] `10_salesjson_prod_success.png` — run exitoso de SalesJSON PROD en Serverless.

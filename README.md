@@ -6,7 +6,7 @@
 
 This repository implements a governed Azure Databricks lakehouse with separate DEV and PROD resources, Unity Catalog, Microsoft Entra identities, ADLS Gen2 external storage, and a medallion ETL architecture.
 
-The DEV foundation, Unity Catalog grants baseline, ABAC controls, and all three ETLs—Sales JSON, Sales CSV, and SalesLT—are functionally complete and documented. The PROD foundation, catalogs, grants, and CI/CD deployment are also complete: GitHub Actions authenticates to Databricks through OIDC without a client secret, deploys the bundle under **/Workspace/prod/ETLs**, and successfully runs the three PROD Jobs. PROD ABAC, ADF orchestration, the consumption layer, and the final cleanup/evidence pass remain pending.
+The DEV foundation, Unity Catalog grants baseline, ABAC controls, all three ETLs—Sales JSON, Sales CSV, and SalesLT—Bundle automation, and evidence are functionally complete and documented. The PROD foundation, catalogs, grants, manually applied and validated ABAC, GitHub Actions/OIDC deployment, and all four Jobs are also complete. PR #3 promoted the explicit-environment cleanup and the manual **Metadata Documentation** Job to `main`; GitHub Actions reconciled the bundle in PROD, the metadata Job ran successfully with `environment=prod`, and the three operational ETLs remain successful. ADF orchestration, the consumption layer, and the final evidence/cleanup pass are the remaining phases.
 
 Validated Sales JSON outcome:
 
@@ -362,7 +362,7 @@ Each of the three workloads follows the same ordered notebook contract:
 99_phase_validation.py
 ~~~
 
-The repository stores these notebooks as **.ipynb** exports under **process/<workload>/**. The **.py** names above describe the shared Databricks notebook/job task pattern that will be wired into Bundles.
+The repository stores these notebooks as **.ipynb** exports under **process/<workload>/**. The **.py** names above describe the shared Databricks notebook pattern implemented by the Bundle Job resources.
 
 ## Repository layout
 
@@ -373,7 +373,9 @@ repo_dbx_jr/
 ├── datasets/salesjson/
 ├── evidence/Automation/
 │   ├── Bundles/
-│   └── GitHubActions/
+│   ├── GitHubActions/
+│   │   └── README.md
+│   └── Metadata/
 │       └── README.md
 ├── evidence/Medallion/
 │   ├── salescsv/
@@ -401,6 +403,11 @@ repo_dbx_jr/
 │   ├── 03_gold_analytics.ipynb
 │   ├── 98_metadata_documentation.ipynb
 │   └── 99_phase_validation.ipynb
+├── resources/
+│   ├── metadata.job.yml
+│   ├── salescsv.job.yml
+│   ├── salesjson.job.yml
+│   └── saleslt.job.yml
 ├── security/
 │   ├── 00_unity_catalog_grants.ipynb
 │   └── 01_abac_policies.ipynb
@@ -413,7 +420,7 @@ The environment, security, and ETL notebooks accept **environment=dev|prod**; th
 
 ## DEV and PROD automation with Databricks Bundles
 
-[Databricks Declarative Automation Bundles](https://docs.databricks.com/aws/en/dev-tools/bundles/jobs-tutorial), formerly Databricks Asset Bundles, version the same three Jobs for DEV and PROD. The bundle-level `run_as` is **sp-centraulus-dbx-main** (application ID **acc15410-5c5f-473e-bc6f-61b7946176a2**) for all workloads in both targets. DEV was deployed interactively by **josrami**. For the academic PROD implementation, **sp-centraulus-dbx-main** is also the deployment identity trusted by GitHub OIDC; no client secret is stored in GitHub.
+[Databricks Declarative Automation Bundles](https://docs.databricks.com/aws/en/dev-tools/bundles/jobs-tutorial), formerly Databricks Asset Bundles, version the same three operational ETL Jobs plus one manual metadata Job for DEV and PROD. The bundle-level `run_as` is **sp-centraulus-dbx-main** (application ID **acc15410-5c5f-473e-bc6f-61b7946176a2**) for all workloads in both targets. DEV was deployed interactively by **josrami**. For the academic PROD implementation, **sp-centraulus-dbx-main** is also the deployment identity trusted by GitHub OIDC; no client secret is stored in GitHub.
 
 Implemented automation and evidence structure:
 
@@ -444,7 +451,7 @@ Each operational Job uses **Bronze -> Silver -> Gold**, passes the target-specif
 
 Every explicit policy sets `retry_on_timeout: true`. The retries are safe because the workloads use checkpoints or idempotent Delta MERGE patterns rather than blind duplicate inserts. DEV triggers were briefly validated and then left `PAUSED`; the PROD target intentionally defines no triggers because ADF remains the planned higher-level orchestrator.
 
-The three `98_metadata_documentation.ipynb` notebooks are intentionally excluded from the operational ETL Jobs and grouped in the separate manual **Metadata Documentation** Job. It has no schedule or trigger, inherits bundle-level `run_as` **sp-centraulus-dbx-main**, and passes the target-specific environment explicitly. This allows PROD comments to be applied by the controlled runtime identity without granting Jose or other developers interactive PROD data permissions. The `99_phase_validation.ipynb` notebooks remain available for separate audit or troubleshooting runs and are not part of the metadata Job.
+The three `98_metadata_documentation.ipynb` notebooks are intentionally excluded from the operational ETL Jobs and grouped in the separate manual **Metadata Documentation** Job. It has no schedule or trigger, inherits bundle-level `run_as` **sp-centraulus-dbx-main**, and passes the target-specific environment explicitly. The Job ran successfully in PROD with `environment=prod`, so the comments were applied by the controlled runtime identity without granting Jose or other developers interactive PROD data permissions. The `99_phase_validation.ipynb` notebooks remain available for separate audit or troubleshooting runs and are not part of the metadata Job.
 
 Validated DEV workflow:
 
@@ -457,7 +464,7 @@ databricks bundle run -t dev saleslt_medallion
 databricks bundle summary -t dev
 ~~~
 
-### Successful PROD CI/CD deployment
+### Successful PROD CI/CD and metadata closure
 
 The **.github/workflows/deploy-prod.yml** workflow runs on a push to **main** or by manual dispatch. It requests `id-token: write`, authenticates to Databricks with GitHub OIDC, and uses the GitHub Environment **prod** with a Required Reviewer. After approval, the workflow completed all of the following successfully:
 
@@ -470,14 +477,16 @@ databricks bundle run -t prod salesjson_medallion
 databricks bundle run -t prod saleslt_medallion
 ~~~
 
-The bundle was deployed under **/Workspace/prod/ETLs**. It created and successfully executed three PROD Jobs: **SalesJSON Medallion** on Serverless, **SalesCSV Medallion** on classic single-node Job Compute, and **SalesLT Medallion** on Serverless. No PROD trigger or schedule is configured.
+The bundle was deployed under **/Workspace/prod/ETLs**. The original PROD rollout created and successfully executed the three operational Jobs: **SalesJSON Medallion** on Serverless, **SalesCSV Medallion** on classic single-node Job Compute, and **SalesLT Medallion** on Serverless.
 
-DEV Bundle evidence is stored in **evidence/Automation/Bundles/**. PROD CI/CD, OIDC, GitHub Environment, workspace, and Job evidence is organized under **evidence/Automation/GitHubActions/**. The future metadata Job screenshots are tracked in **evidence/Automation/Metadata/README.md**; no screenshot is claimed before it is captured.
+PR #3 promoted the empty default for notebook `environment` widgets together with `resources/metadata.job.yml` to `main`. The resulting push reran the PROD GitHub Actions flow: Bundle validation and deployment succeeded, and the deployment reconciled the existing resources rather than creating duplicate ETL Jobs. PROD now contains four Jobs. **Metadata Documentation** is the fourth resource, is manual with no trigger or schedule, has three parallel Serverless tasks, and runs as **sp-centraulus-dbx-main**. Its successful PROD run received `environment=prod` explicitly from the Bundle target. The three operational ETL Jobs also remain successful, and no interactive PROD data permissions were required for Jose or the developers group. The `99_phase_validation` notebooks remain outside this operational flow.
+
+DEV Bundle evidence is stored in **evidence/Automation/Bundles/**. PROD CI/CD, OIDC, GitHub Environment, workspace, and Job evidence is organized under **evidence/Automation/GitHubActions/**. The updated `07_prod_jobs_overview.png` shows all four Jobs and their recent success indicators. **evidence/Automation/Metadata/README.md** distinguishes this completed deployment/run from the remaining detailed screenshots to capture; no missing screenshot is presented as completed evidence.
 
 ## Project status
 
 - DEV foundation, Unity Catalog grants, ABAC, ETLs, validation, evidence, Bundle deployment, and Phase 5.3 operational hardening: complete.
-- PROD foundation, catalogs, schemas, Unity Catalog grants, manually applied and validated ABAC, GitHub OIDC CI/CD, bundle validation/deployment/summary, and the three Bronze-to-Gold Job runs: complete.
-- Current working branch: **dev_qa**; documentation changes must be reviewed before any later promotion to **main**.
-- Remaining PROD work after promotion: deploy and run the manual **Metadata Documentation** Job and capture its evidence. Run `99_phase_validation` separately only when audit or troubleshooting evidence is needed.
-- Remaining project work: add ADF as the higher-level orchestrator; build the consumption layer (Dashboard, Genie, or App); perform final cleanup and evidence completion.
+- PROD foundation, catalogs, schemas, Unity Catalog grants, manually applied and validated ABAC, GitHub OIDC CI/CD, three successful Bronze-to-Gold ETL Job runs, explicit-environment cleanup, and successful deployment/run of **Metadata Documentation**: complete.
+- PR #3 promoted the environment-widget cleanup and metadata Job to `main`; this documentation closure is being prepared on **dev_qa** without an automatic merge to `main`.
+- Detailed metadata screenshots remain to be captured as evidence, but the PROD deployment and execution are not pending. Run `99_phase_validation` separately only when audit or troubleshooting evidence is needed.
+- Next: add ADF as the higher-level orchestrator; then build the consumption layer (Dashboard, Genie, or App); finally complete the evidence and cleanup pass.
