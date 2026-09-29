@@ -30,56 +30,57 @@ targets:
               url: abfss://landing@stcentralusjrdev.dfs.core.windows.net/salesjson/incoming/
               min_time_between_triggers_seconds: 900
               wait_after_last_change_seconds: 60
+
         salescsv_medallion:
           schedule:
             quartz_cron_expression: "0 0/15 * * * ?"
             timezone_id: UTC
             pause_status: PAUSED
+
         saleslt_medallion:
           schedule:
             quartz_cron_expression: "0 5/15 * * * ?"
             timezone_id: UTC
             pause_status: PAUSED
 
-  # Prepared for promotion only; do not deploy from dev_qa.
-prod:
-  mode: production
+  prod:
+    mode: production
 
-  workspace:
-    host: https://adb-7405604697927684.4.azuredatabricks.net
-    root_path: /Workspace/prod/ETLs
+    workspace:
+      host: https://adb-7405604697927684.4.azuredatabricks.net
+      root_path: /Workspace/prod/ETLs
 
-  git:
-    branch: main
+    git:
+      branch: main
 
-  variables:
-    environment: prod
+    variables:
+      environment: prod
 
-  resources:
-    jobs:
-      salesjson_medallion:
-        permissions:
-          - level: CAN_MANAGE_RUN
-            service_principal_name: 0947a342-ab4a-43be-93b3-b8243fc161e5
-          - level: CAN_MANAGE_RUN
-            service_principal_name: 5d13f7d7-0567-429c-9880-320e9555e5fc
-          - level: CAN_MANAGE_RUN
-            service_principal_name: 5dfbf4a7-9142-439f-a3f2-e5e5a2926e88
+    resources:
+      jobs:
+        salesjson_medallion:
+          permissions:
+            - level: CAN_MANAGE_RUN
+              service_principal_name: 0947a342-ab4a-43be-93b3-b8243fc161e5
+            - level: CAN_MANAGE_RUN
+              service_principal_name: 5d13f7d7-0567-429c-9880-320e9555e5fc
+            - level: CAN_MANAGE_RUN
+              service_principal_name: 5dfbf4a7-9142-439f-a3f2-e5e5a2926e88
 
-      salescsv_medallion:
-        permissions:
-          - level: CAN_MANAGE_RUN
-            service_principal_name: 0947a342-ab4a-43be-93b3-b8243fc161e5
-          - level: CAN_MANAGE_RUN
-            service_principal_name: 5d13f7d7-0567-429c-9880-320e9555e5fc
-          - level: CAN_MANAGE_RUN
-            service_principal_name: 5dfbf4a7-9142-439f-a3f2-e5e5a2926e88
+        salescsv_medallion:
+          permissions:
+            - level: CAN_MANAGE_RUN
+              service_principal_name: 0947a342-ab4a-43be-93b3-b8243fc161e5
+            - level: CAN_MANAGE_RUN
+              service_principal_name: 5d13f7d7-0567-429c-9880-320e9555e5fc
+            - level: CAN_MANAGE_RUN
+              service_principal_name: 5dfbf4a7-9142-439f-a3f2-e5e5a2926e88
 
-      saleslt_medallion:
-        permissions:
-          - level: CAN_MANAGE_RUN
-            service_principal_name: 0947a342-ab4a-43be-93b3-b8243fc161e5
-          - level: CAN_MANAGE_RUN
-            service_principal_name: 5d13f7d7-0567-429c-9880-320e9555e5fc
-          - level: CAN_MANAGE_RUN
-            service_principal_name: 5dfbf4a7-9142-439f-a3f2-e5e5a2926e88
+        saleslt_medallion:
+          permissions:
+            - level: CAN_MANAGE_RUN
+              service_principal_name: 0947a342-ab4a-43be-93b3-b8243fc161e5
+            - level: CAN_MANAGE_RUN
+              service_principal_name: 5d13f7d7-0567-429c-9880-320e9555e5fc
+            - level: CAN_MANAGE_RUN
+              service_principal_name: 5dfbf4a7-9142-439f-a3f2-e5e5a2926e88
