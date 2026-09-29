@@ -11,5 +11,6 @@ Only representative screenshots are embedded in the project READMEs. The complet
 - `Automation/GitHubActions/` — PROD promotion, OIDC, approval gates, deployment, workspace, and Jobs.
 - `Automation/Metadata/` — manual Metadata Documentation Job evidence checklist.
 - `Automation/ADF/` — completed ADF v2 orchestration and correlated Databricks runs.
+- `Consumption/PowerBI/` — completed Power BI consumption path, Databricks Query History, Desktop dashboard, and published Power BI Service report.
 
 PNG files use ordered, descriptive English names within each folder.
