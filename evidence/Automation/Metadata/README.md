@@ -4,7 +4,7 @@ PR #3 promoted `resources/metadata.job.yml` and the explicit-environment cleanup
 
 The deployment and execution are complete. Unchecked items below are screenshots still to capture, not pending operational work. Do not place credentials, access tokens, or other secrets in screenshots.
 
-- [x] `../GitHubActions/07_prod_jobs_overview.png` shows all four PROD Jobs, **Run as: sp-centraulus-dbx-main**, and a recent successful run indicator for **Metadata Documentation**.
+- [x] `../GitHubActions/09_prod_jobs_overview.png` shows all four PROD Jobs, **Run as: sp-centraulus-dbx-main**, and a recent successful run indicator for **Metadata Documentation**.
 - [ ] Detailed `databricks bundle validate -t prod` output showing the `metadata_documentation` resource.
 - [ ] **Metadata Documentation** configuration showing three parallel Serverless notebook tasks and no schedule or file-arrival trigger.
 - [ ] Detailed successful PROD run view showing all three `98_metadata_documentation` tasks completed with `environment=prod`.
