@@ -385,7 +385,7 @@ repo_dbx_jr/
 └── README_PROFESSOR_ES.md
 ~~~
 
-Los notebooks usan **environment=dev|prod** para seleccionar el storage y catálogo correctos. Los tres ETL fueron validados funcionalmente en DEV y sus Jobs operativos Bronze-to-Gold se ejecutaron correctamente en PROD. La conexión, el private network path y el procesamiento de SalesLT se validaron en Databricks Serverless compute; Sales JSON también se validó mediante su ruta Serverless/NCC.
+Los notebooks usan **environment=dev|prod** para seleccionar el storage y catálogo correctos. Sus widgets fuente ahora tienen un valor vacío por defecto, por lo que una ejecución interactiva falla de forma segura si el operador no escribe explícitamente y de forma exacta `dev` o `prod`. Los Jobs del Bundle siguen automatizados porque cada tarea recibe el ambiente desde el target seleccionado. Los tres ETL fueron validados funcionalmente en DEV y sus Jobs operativos Bronze-to-Gold se ejecutaron correctamente en PROD. La conexión, el private network path y el procesamiento de SalesLT se validaron en Databricks Serverless compute; Sales JSON también se validó mediante su ruta Serverless/NCC.
 
 ## Automatización DEV y PROD con Databricks Bundles
 
@@ -397,12 +397,15 @@ Estructura implementada de automatización y evidencias:
 .github/workflows/deploy-prod.yml
 databricks.yml
 resources/
+├── metadata.job.yml
 ├── salesjson.job.yml
 ├── salescsv.job.yml
 └── saleslt.job.yml
 evidence/Automation/
 ├── Bundles/
-└── GitHubActions/
+├── GitHubActions/
+│   └── README.md
+└── Metadata/
     └── README.md
 ~~~
 
@@ -413,10 +416,11 @@ Cada Job operativo sigue **Bronze -> Silver -> Gold**, pasa `environment=dev|pro
 | **salesjson_medallion** | Serverless Jobs | Bronze: 2 retries / 30 s; Silver y Gold: 1 retry / 30 s | File Arrival DEV `PAUSED`; PROD sin trigger |
 | **salescsv_medallion** | Classic single-node Job Compute: DBR 17.3 LTS, `Standard_D4ds_v4`, Photon, Standard access mode, `num_workers: 0`, sin autoscaling | Todas las tareas: 1 retry / 30 s | Schedule DEV `PAUSED`; PROD sin trigger |
 | **saleslt_medallion** | Serverless Jobs; la federación usa **sp-centraulus-azsql** | Bronze: 3 retries / 60 s; Silver y Gold: 1 retry / 30 s | Schedule DEV `PAUSED`; PROD sin trigger |
+| **metadata_documentation** | Tres tareas Serverless paralelas | Sin retries explícitos | Solo manual en ambos targets; sin schedule ni trigger |
 
 Todas las políticas explícitas usan `retry_on_timeout: true`. Los retries son seguros porque los workloads usan checkpoints o patrones idempotentes de Delta MERGE. Los triggers DEV se validaron brevemente y quedaron `PAUSED`; el target PROD no define triggers porque ADF sigue planificado como orquestador superior.
 
-Los notebooks `98_metadata_documentation.ipynb` y `99_phase_validation.ipynb` quedan intencionalmente fuera de los Jobs operativos. Se conservan para documentación y validación de auditoría; su ejecución en PROD continúa pendiente.
+Los tres notebooks `98_metadata_documentation.ipynb` quedan intencionalmente fuera de los Jobs ETL operativos y se agrupan en el Job manual **Metadata Documentation**. No tiene schedule ni trigger, hereda el `run_as` del bundle **sp-centraulus-dbx-main** y recibe explícitamente el ambiente del target. Así se pueden aplicar los comentarios de PROD con la identidad controlada de runtime sin conceder a Jose ni a otros developers permisos interactivos sobre datos PROD. Los notebooks `99_phase_validation.ipynb` siguen disponibles para ejecuciones separadas de auditoría o troubleshooting y no forman parte del Job de metadata.
 
 Flujo DEV validado:
 
@@ -444,12 +448,12 @@ databricks bundle run -t prod saleslt_medallion
 
 El bundle se desplegó bajo **/Workspace/prod/ETLs**. Creó y ejecutó con éxito tres Jobs PROD: **SalesJSON Medallion** en Serverless, **SalesCSV Medallion** en classic single-node Job Compute y **SalesLT Medallion** en Serverless. No existe trigger ni schedule en PROD.
 
-La evidencia del Bundle DEV se conserva en **evidence/Automation/Bundles/**. La evidencia de CI/CD PROD, OIDC, GitHub Environment, workspace y Jobs se organiza en **evidence/Automation/GitHubActions/**; su README contiene el checklist de screenshots.
+La evidencia del Bundle DEV se conserva en **evidence/Automation/Bundles/**. La evidencia de CI/CD PROD, OIDC, GitHub Environment, workspace y Jobs se organiza en **evidence/Automation/GitHubActions/**. Las futuras capturas del Job de metadata se controlan en **evidence/Automation/Metadata/README.md**; no se declara ninguna captura antes de obtenerla.
 
 ## Estado
 
 - Fundación DEV, grants de Unity Catalog, ABAC, ETL, validaciones, evidencias, Bundle y operational hardening Phase 5.3: completos.
-- Fundación PROD, catálogos, schemas, grants de Unity Catalog, CI/CD con GitHub OIDC, `bundle validate/deploy/summary` y ejecuciones Bronze-to-Gold de los tres Jobs: completos.
+- Fundación PROD, catálogos, schemas, grants de Unity Catalog, ABAC aplicado y validado manualmente, CI/CD con GitHub OIDC, `bundle validate/deploy/summary` y ejecuciones Bronze-to-Gold de los tres Jobs: completos.
 - Rama de trabajo actual: **dev_qa**; estos cambios de documentación requieren revisión antes de una promoción posterior a **main**.
-- Pendiente en PROD: ejecutar los notebooks `98_metadata_documentation` y `99_phase_validation` y capturar su evidencia; implementar y validar ABAC PROD.
+- Pendiente en PROD después de la promoción: desplegar y ejecutar el Job manual **Metadata Documentation** y capturar su evidencia. Ejecutar `99_phase_validation` por separado solo cuando se requiera evidencia de auditoría o troubleshooting.
 - Pendiente del proyecto: integrar ADF como orquestador superior; construir la capa de consumo (Dashboard, Genie o App); completar la limpieza y evidencia final.
