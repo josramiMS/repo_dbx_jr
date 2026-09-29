@@ -1,0 +1,23 @@
+resources:
+  jobs:
+    metadata_documentation:
+      name: Metadata Documentation
+      description: Manual Serverless Job that applies table and column comments for all three workloads.
+      tasks:
+        - task_key: salesjson_metadata
+          notebook_task:
+            notebook_path: ../process/salesjson/98_metadata_documentation.ipynb
+            base_parameters:
+              environment: ${var.environment}
+
+        - task_key: salescsv_metadata
+          notebook_task:
+            notebook_path: ../process/salescsv/98_metadata_documentation.ipynb
+            base_parameters:
+              environment: ${var.environment}
+
+        - task_key: saleslt_metadata
+          notebook_task:
+            notebook_path: ../process/saleslt/98_metadata_documentation.ipynb
+            base_parameters:
+              environment: ${var.environment}

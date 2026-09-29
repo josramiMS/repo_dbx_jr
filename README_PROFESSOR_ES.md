@@ -4,7 +4,7 @@
 
 ## Resumen ejecutivo
 
-El proyecto implementa una arquitectura lakehouse gobernada en Azure Databricks. La fundación DEV, Security DEV —grants de Unity Catalog + ABAC— y los tres ETL —Sales JSON, Sales CSV y SalesLT— están completos y validados de extremo a extremo en DEV. Databricks Declarative Automation Bundles + Jobs también está desplegado y validado en DEV desde **dev_qa**. PROD, ADF y los extras restantes siguen pendientes.
+El proyecto implementa una arquitectura lakehouse gobernada en Azure Databricks. DEV está completo con grants de Unity Catalog, ABAC, los tres ETL y Databricks Bundles. La fundación, catálogos, grants y ABAC de PROD también están completos; ABAC PROD se aplicó y validó manualmente. GitHub Actions despliega mediante OIDC sin client secret, con aprobación obligatoria del Environment **prod**, y los tres Jobs PROD se crearon y ejecutaron correctamente. Quedan pendientes la promoción y ejecución del nuevo Job manual de metadata 98 en PROD, la evidencia correspondiente, ADF, la capa de consumo y el cierre final.
 
 ~~~text
 15 JSON files / 150 Bronze rows
@@ -37,12 +37,12 @@ SalesLT: Azure SQL privado -> fc_saleslt_dev -> 5 Bronze snapshots
 
 | Criterio | Implementación | Evidencia | Estado |
 |---|---|---|---|
-| DEV/PROD separados | Workspaces, storages y Access Connectors separados | **00_environment_setup.ipynb** | DEV validado; PROD preparado |
-| Managed Identity | Access Connectors y Storage Credentials | External Locations landing/lakehouse/streaming | DEV validado |
-| Unity Catalog | Catálogos por workload; schemas bronze/silver/gold | Notebook de ambiente | DEV completo |
+| DEV/PROD separados | Workspaces, storages y Access Connectors separados | **00_environment_setup.ipynb** | Fundaciones DEV y PROD completas |
+| Managed Identity | Access Connectors y Storage Credentials | External Locations landing/lakehouse/streaming | DEV y PROD completos |
+| Unity Catalog | Catálogos por workload; schemas bronze/silver/gold | Notebook de ambiente | Catálogos y grants DEV/PROD completos |
 | Control de acceso | Developers R/W/Create en DEV; Analysts solo Gold; ETL SP mínimo | **00_unity_catalog_grants.ipynb** | Validado con SHOW GRANTS |
-| ABAC: column mask | Governed tag **data_classification** sobre **saleslt_dev.gold.sales_by_customer.customer_email** | **01_abac_policies** + **evidence/Security/ABAC/** | Admin/developer: email normal; analyst: email enmascarado |
-| ABAC: row filter | Governed tag **data_classification** sobre **salesjson_dev.gold.customer_sales_summary.country** | **01_abac_policies** + **evidence/Security/ABAC/** | Admin: 92 filas; analyst: 34 filas, solo Costa Rica |
+| ABAC: column mask | Governed tag **data_classification** sobre SalesLT Gold según ambiente | **01_abac_policies** + **evidence/Security/ABAC/** | Validado en DEV y aplicado/validado manualmente en PROD |
+| ABAC: row filter | Governed tag **data_classification** sobre SalesJSON Gold según ambiente | **01_abac_policies** + **evidence/Security/ABAC/** | Validado en DEV y aplicado/validado manualmente en PROD |
 | Dataset incremental | 15 archivos NDJSON | **datasets/salesjson/** | Completo |
 | Auto Loader | cloudFiles, Managed File Events, availableNow | Notebook Bronze | Validado |
 | Checkpoint/schema | Rutas separadas en streaming | Notebook y evidencia | Validado |
@@ -61,7 +61,10 @@ SalesLT: Azure SQL privado -> fc_saleslt_dev -> 5 Bronze snapshots
 | SalesLT Silver | customers/products/sales_order_lines; joins y moneda a 2 decimales | 02_silver_transformation + evidencia de join | 847 / 295 / 542 |
 | SalesLT Gold | sales_by_product, sales_by_customer, monthly_sales_summary; aggregations y ranking | 03_gold_analytics + outputs | Completo |
 | SalesLT reconciliación | Silver, Product Gold y Monthly Gold | 99_phase_validation + evidence/Medallion/saleslt/ | 708690.07 en las 3 capas; PASS |
-| CI/CD | Declarative Automation Bundles; tres Jobs YAML | Bundle validado/desplegado y Jobs ejecutados en DEV | Completo en DEV |
+| CI/CD | `deploy-prod.yml`; GitHub OIDC sin client secret; Environment `prod` con Required Reviewer | GitHub Actions + `evidence/Automation/GitHubActions/` | PROD exitoso |
+| Jobs PROD | SalesJSON y SalesLT Serverless; SalesCSV classic single-node Job Compute; sin triggers | Jobs overview y workflow completo | 3/3 creados y ejecutados |
+| Seguridad de parámetros | Widgets de ambiente con default vacío y validación exacta `dev`/`prod` | 18 notebooks parametrizados | Ejecución manual sin fallback silencioso a DEV |
+| Metadata PROD | Job `metadata_documentation`, tres tareas Serverless, manual y sin trigger | `resources/metadata.job.yml` + `evidence/Automation/Metadata/README.md` | Listo para promoción y ejecución |
 
 ## Recursos
 
@@ -89,14 +92,14 @@ Los Access Connectors usan Managed Identity. Los nombres técnicos y comentarios
 | **admins** | Administración y ownership. |
 | **grp-dbx-developers** | DEV: USE, CREATE TABLE, SELECT, MODIFY y External Locations requeridas. PROD: sin acceso directo. |
 | **grp-dbx-analysts** | USE y SELECT únicamente en Gold. |
-| **sp-centraulus-dbx-main** | Runtime de Jobs en schemas existentes; landing read; external table create; streaming read/write. |
+| **sp-centraulus-dbx-main** | `run_as` de los Jobs DEV/PROD y, en este proyecto académico, deploy identity de GitHub OIDC para PROD; no usa client secret almacenado. |
 | **sp-centraulus-azsql** | Identidad de la conexión federada Azure SQL / SalesLT en DEV. |
 
 El ETL SP no recibe CREATE CATALOG, CREATE SCHEMA, MANAGE, OWNERSHIP ni acceso directo al Storage Credential.
 
 En PROD, developers no reciben grants; analysts consumen únicamente Gold y el Service Principal del ETL ejecuta las cargas.
 
-### ABAC validado en DEV
+### ABAC validado en DEV y PROD
 
 El baseline de grants se conserva en **security/00_unity_catalog_grants.ipynb**. La tarea de notebook **security/01_abac_policies.py**, versionada en el repositorio como **security/01_abac_policies.ipynb**, implementa dos políticas controladas por el governed tag **data_classification**:
 
@@ -105,7 +108,7 @@ El baseline de grants se conserva en **security/00_unity_catalog_grants.ipynb**.
 | Column mask en **saleslt_dev.gold.sales_by_customer.customer_email** para **grp-dbx-analysts** | Admin/developer ve el email normal; analyst lo ve enmascarado. |
 | Row filter en **salesjson_dev.gold.customer_sales_summary.country** para **grp-dbx-analysts** | Admin ve Costa Rica **34**, United States **24**, Mexico **19** y Colombia **15**: **92 total**. Analyst ve solo Costa Rica: **34**. |
 
-Las evidencias de grants y ABAC están separadas en **evidence/Security/UC_GRANTS/** y **evidence/Security/ABAC/**. Security DEV queda completada con grants + ABAC.
+Las evidencias de grants y ABAC están separadas en **evidence/Security/UC_GRANTS/** y **evidence/Security/ABAC/**. Security DEV queda completada con grants + ABAC. La misma definición portable se aplicó y validó manualmente en PROD sin conceder acceso interactivo a developers.
 
 ## ETL Sales JSON
 
@@ -244,34 +247,68 @@ Seguridad:
 - **evidence/Security/UC_GRANTS/**: baseline de permisos y External Locations.
 - **evidence/Security/ABAC/**: configuración de policies, email con/sin mask y row filter con admin/developer versus analyst.
 
-## Automatización DEV
+Automatización:
 
-[Databricks Declarative Automation Bundles](https://docs.databricks.com/aws/en/dev-tools/bundles/jobs-tutorial) define tres Jobs YAML bajo un mismo bundle. Todos ejecutan Bronze -> Silver -> Gold con `environment=dev`, un ingestion timestamp común y Run As **sp-centraulus-dbx-main**. El deployer actual en DEV es el usuario interactivo **josrami**; **sp-centraulus-dbx-main** es la identidad `run_as` de los Jobs, no la identidad que ejecutó el deploy del Bundle.
+- **evidence/Automation/Bundles/**: validación, deploy, summary, retries y triggers `PAUSED` de DEV.
+- **evidence/Automation/GitHubActions/**: protección del Environment `prod`, CI/CD exitoso, despliegue en workspace y Jobs PROD.
+- **evidence/Automation/Metadata/**: checklist para la futura validación, configuración y ejecución PROD del Job manual de metadata.
+
+## Automatización DEV y PROD
+
+[Databricks Declarative Automation Bundles](https://docs.databricks.com/aws/en/dev-tools/bundles/jobs-tutorial) define tres Jobs ETL y un Job manual de metadata reutilizados por ambos targets. Los Jobs ETL ejecutan Bronze -> Silver -> Gold con `environment=dev|prod`, un ingestion timestamp común y `run_as` **sp-centraulus-dbx-main**. El Job de metadata pasa el mismo ambiente del target a sus tres notebooks 98. Los widgets fuente tienen default vacío, así que las ejecuciones manuales requieren seleccionar explícitamente `dev` o `prod`; los Jobs no cambian de comportamiento porque envían el parámetro desde el Bundle. DEV se desplegó interactivamente con **josrami**. Para este proyecto académico, **sp-centraulus-dbx-main** también es la identidad de despliegue de GitHub OIDC en PROD.
 
 ~~~text
+.github/workflows/deploy-prod.yml
 databricks.yml
 resources/
+├── metadata.job.yml
 ├── salesjson.job.yml
 ├── salescsv.job.yml
 └── saleslt.job.yml
+evidence/Automation/
+├── Bundles/
+├── GitHubActions/
+│   └── README.md
+└── Metadata/
+    └── README.md
 ~~~
 
-- **salesjson_medallion**: Serverless Jobs. Bronze tiene 2 retries con intervalo de 30 s; Silver y Gold, 1 retry con 30 s. Usa File Arrival sobre `abfss://landing@stcentralusjrdev.dfs.core.windows.net/salesjson/incoming/`, con intervalo mínimo de 15 minutos y quiet period de 60 s.
-- **salescsv_medallion**: classic shared single-node Jobs Compute con DBR 17.3 LTS, `Standard_D4ds_v4`, Photon, Standard access mode, `num_workers: 0` y sin autoscaling. Todas las tareas tienen 1 retry con intervalo de 30 s. Su schedule de evidencia corre cada 15 minutos en UTC (`:00/:15/:30/:45`).
-- **saleslt_medallion**: Serverless Jobs sobre `fc_saleslt_dev`; la conexión federada usa **sp-centraulus-azsql** y el runtime usa **sp-centraulus-dbx-main**. Bronze tiene 3 retries con intervalo de 60 s; Silver y Gold, 1 retry con 30 s. Su schedule de evidencia corre cada 15 minutos en UTC, desplazado 5 minutos respecto a CSV (`:05/:20/:35/:50`).
+- **salesjson_medallion**: Serverless Jobs. Bronze tiene 2 retries con intervalo de 30 s; Silver y Gold, 1 retry con 30 s.
+- **salescsv_medallion**: classic single-node Job Compute con DBR 17.3 LTS, `Standard_D4ds_v4`, Photon, Standard access mode, `num_workers: 0` y sin autoscaling. Todas las tareas tienen 1 retry con intervalo de 30 s.
+- **saleslt_medallion**: Serverless Jobs; la conexión federada usa **sp-centraulus-azsql** y el runtime usa **sp-centraulus-dbx-main**. Bronze tiene 3 retries con intervalo de 60 s; Silver y Gold, 1 retry con 30 s.
 
-Todas las tareas configuradas permiten retry en timeout. Los tres triggers se validaron temporalmente como `UNPAUSED` y su estado final en YAML y Databricks es `PAUSED`, evitando ejecuciones y costos innecesarios. Estos triggers sirven como evidencia operacional de Jobs; ADF se añadirá después como orquestador superior. No existen triggers PROD.
+Los triggers de DEV se validaron temporalmente y quedaron `PAUSED`. PROD no tiene triggers ni schedules; ADF se añadirá como orquestador superior.
 
-Los notebooks 98 de metadata y 99 de validation se conservan para documentación y verificación, pero no forman parte del flujo operativo de los Jobs. `bundle validate`, `bundle deploy`, `bundle summary` y la inspección de los tres Jobs con la CLI se completaron correctamente en DEV. La evidencia y el checklist de screenshots están en `evidence/Automation/Bundles/`: validación/deploy exitosos, Job IDs, retries, File Arrival, schedules y estado final `PAUSED`. No se ha desplegado PROD.
+- **metadata_documentation** / **Metadata Documentation**: tres tareas Serverless paralelas para SalesJSON, SalesCSV y SalesLT. Es manual, no define schedule ni trigger, hereda `run_as` **sp-centraulus-dbx-main** y permite aplicar metadata PROD sin otorgar permisos interactivos de datos PROD a Jose/developers.
+- Los notebooks `99_phase_validation` se mantienen para auditoría o troubleshooting por separado y no forman parte de este Job.
+
+### Cierre CI/CD de PROD
+
+El workflow **deploy-prod.yml** corre tras un push a **main** o manualmente. Usa permisos `id-token: write`, autenticación GitHub OIDC sin client secret y el GitHub Environment **prod** con Required Reviewer. La ejecución aprobada completó con éxito:
+
+~~~text
+databricks bundle validate -t prod
+databricks bundle deploy -t prod
+databricks bundle summary -t prod
+databricks bundle run -t prod salescsv_medallion
+databricks bundle run -t prod salesjson_medallion
+databricks bundle run -t prod saleslt_medallion
+~~~
+
+Resultado observable:
+
+- Bundle desplegado bajo **/Workspace/prod/ETLs**.
+- **SalesJSON Medallion** creado y ejecutado en Serverless.
+- **SalesCSV Medallion** creado y ejecutado en classic single-node Job Compute.
+- **SalesLT Medallion** creado y ejecutado en Serverless.
+- Tres ejecuciones PROD exitosas y ningún trigger PROD.
+
+Los notebooks 98 no forman parte de los Jobs ETL operativos: ahora pertenecen al Job manual **Metadata Documentation**, que debe desplegarse y ejecutarse en PROD tras la promoción. Los notebooks 99 siguen separados para auditoría o troubleshooting. El checklist de evidencia del nuevo Job está en **evidence/Automation/Metadata/README.md**.
 
 ## Estado de la entrega
 
-- Fundación DEV: completa.
-- Security DEV: completa con grants de Unity Catalog + ABAC.
-- Sales JSON Bronze/Silver/Gold/metadata: completo y validado en DEV.
-- Sales CSV Bronze/Silver/Gold/metadata: completo y validado en DEV.
-- SalesLT private federation/Bronze/Silver/Gold/metadata: completo y validado en DEV.
-- Validaciones, reconciliaciones y evidencias de los tres ETL: completas.
-- Bundle DEV y Jobs SalesJSON/SalesCSV/SalesLT: desplegados; Phase 5.3 de operational hardening completada con retries explícitos y triggers finales `PAUSED`.
-- Rama de trabajo: **dev_qa**.
-- Siguiente fase: despliegue PROD; ADF y visualización final continúan pendientes.
+- DEV completo: fundación, Unity Catalog grants, ABAC, tres ETL, metadata/validación, evidencia y Bundle con operational hardening.
+- PROD completo para esta fase: fundación, catálogos, schemas, grants, ABAC aplicado y validado manualmente, OIDC CI/CD, `bundle validate/deploy/summary` y tres Jobs Bronze-to-Gold ejecutados.
+- Rama de trabajo: **dev_qa**; no se hace merge automático a **main**.
+- Pendiente en PROD después de la promoción: desplegar y ejecutar **Metadata Documentation** y capturar evidencia. Los notebooks 99 se ejecutan por separado solo cuando se necesiten para auditoría o troubleshooting.
+- Pendiente global: ADF como orquestador superior, capa de consumo (Dashboard, Genie o App) y cleanup/evidencia final.

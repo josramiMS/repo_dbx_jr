@@ -6,7 +6,7 @@
 
 Este repositorio implementa una arquitectura lakehouse gobernada en Azure Databricks con recursos separados para DEV y PROD, Unity Catalog, identidades de Microsoft Entra, almacenamiento externo en ADLS Gen2 y un diseño ETL Medallion.
 
-La fundación DEV, el baseline de grants de Unity Catalog, los controles ABAC y los tres ETL —Sales JSON, Sales CSV y SalesLT— están funcionalmente completos y documentados. Databricks Declarative Automation Bundles está desplegado y validado en DEV desde la rama **dev_qa**: SalesJSON y SalesLT usan Serverless Jobs, mientras SalesCSV usa classic single-node Jobs Compute. El despliegue en PROD, ADF y los entregables opcionales restantes continúan explícitamente pendientes.
+La fundación DEV, el baseline de grants de Unity Catalog, los controles ABAC y los tres ETL —Sales JSON, Sales CSV y SalesLT— están funcionalmente completos y documentados. También están completas la fundación, los catálogos, los grants y el despliegue CI/CD de PROD: GitHub Actions autentica contra Databricks mediante OIDC sin client secret, despliega el bundle bajo **/Workspace/prod/ETLs** y ejecuta correctamente los tres Jobs PROD. Quedan pendientes ABAC en PROD, ADF, la capa de consumo y el cierre final de limpieza/evidencias.
 
 ~~~text
 15 archivos JSON / 150 filas Bronze
@@ -87,7 +87,7 @@ Los managed roots están aislados bajo **lakehouse/_managed/<catalog>/**. Las ta
 
 Cada catálogo contiene **bronze** para datos raw y trazables, **silver** para datos validados y estandarizados, y **gold** para modelos de negocio. Los nombres técnicos y comentarios se mantienen en inglés para asegurar metadata consistente y preparar futuros Genie spaces.
 
-En DEV, Azure SQL SalesLT se expone mediante el Foreign Catalog de Lakehouse Federation **fc_saleslt_dev**. La conexión autentica con **sp-centraulus-azsql** y accede a un servidor Azure SQL con public access disabled mediante una Network Connectivity Configuration (NCC) y Private Endpoint. Los nombres **fc_saleslt_prod** y **saleslt_prod** se conservan en la arquitectura objetivo; el despliegue en PROD aún no está completado. Los datos Delta replicados y transformados permanecen en **saleslt_<environment>**.
+En DEV, Azure SQL SalesLT se expone mediante el Foreign Catalog de Lakehouse Federation **fc_saleslt_dev**. La conexión autentica con **sp-centraulus-azsql** y accede a un servidor Azure SQL con public access disabled mediante una Network Connectivity Configuration (NCC) y Private Endpoint. La fundación, los catálogos, los schemas y los grants de PROD están completos, y el despliegue correspondiente usa **fc_saleslt_prod** y **saleslt_prod**. Los datos Delta replicados y transformados permanecen en **saleslt_<environment>**.
 
 ## Identidades y permisos
 
@@ -96,7 +96,7 @@ En DEV, Azure SQL SalesLT se expone mediante el Foreign Catalog de Lakehouse Fed
 | **admins** | Bootstrap, ownership y administración. |
 | **grp-dbx-developers** | Ingeniería en DEV; no tiene acceso directo a PROD. |
 | **grp-dbx-analysts** | Consumo exclusivo de Gold. |
-| **sp-centraulus-dbx-main** | Identidad `run_as` de los Jobs. Application ID: **acc15410-5c5f-473e-bc6f-61b7946176a2**. El deployer actual del Bundle en DEV es el usuario interactivo **josrami**, no este service principal. |
+| **sp-centraulus-dbx-main** | Identidad `run_as` común de los Jobs DEV y PROD y, para este proyecto académico, identidad de despliegue PROD mediante GitHub OIDC. Application ID: **acc15410-5c5f-473e-bc6f-61b7946176a2**. GitHub usa autenticación federada sin client secret almacenado. El Bundle DEV se desplegó interactivamente con **josrami**. |
 | **sp-centraulus-azsql** | Identidad usada por la conexión federada Azure SQL / SalesLT en DEV. |
 
 | Principal | Catálogos y schemas | landing | lakehouse | streaming |
@@ -344,8 +344,13 @@ El repositorio conserva estos notebooks como exports **.ipynb** bajo **process/<
 
 ~~~text
 repo_dbx_jr/
+├── .github/workflows/deploy-prod.yml
 ├── datasets/salescsv/
 ├── datasets/salesjson/
+├── evidence/Automation/
+│   ├── Bundles/
+│   └── GitHubActions/
+│       └── README.md
 ├── evidence/Medallion/
 │   ├── salescsv/
 │   ├── salesjson/
@@ -380,33 +385,42 @@ repo_dbx_jr/
 └── README_PROFESSOR_ES.md
 ~~~
 
-Los notebooks usan **environment=dev|prod** para seleccionar el storage y catálogo correctos. Los tres ETL fueron validados funcionalmente en DEV. La conexión, el private network path y el procesamiento de SalesLT se validaron en Databricks Serverless compute; Sales JSON también se validó mediante su ruta Serverless/NCC.
+Los notebooks usan **environment=dev|prod** para seleccionar el storage y catálogo correctos. Sus widgets fuente ahora tienen un valor vacío por defecto, por lo que una ejecución interactiva falla de forma segura si el operador no escribe explícitamente y de forma exacta `dev` o `prod`. Los Jobs del Bundle siguen automatizados porque cada tarea recibe el ambiente desde el target seleccionado. Los tres ETL fueron validados funcionalmente en DEV y sus Jobs operativos Bronze-to-Gold se ejecutaron correctamente en PROD. La conexión, el private network path y el procesamiento de SalesLT se validaron en Databricks Serverless compute; Sales JSON también se validó mediante su ruta Serverless/NCC.
 
-## Automatización DEV con Databricks Bundles
+## Automatización DEV y PROD con Databricks Bundles
 
-[Databricks Declarative Automation Bundles](https://docs.databricks.com/aws/en/dev-tools/bundles/jobs-tutorial), anteriormente Databricks Asset Bundles, versiona los Jobs DEV como recursos YAML. El `run_as` común definido a nivel de bundle es **sp-centraulus-dbx-main** (application ID **acc15410-5c5f-473e-bc6f-61b7946176a2**) para los tres workloads. El deployer de DEV continúa siendo el usuario interactivo autenticado **josrami**; la identidad que despliega y la identidad de runtime de los Jobs son roles distintos.
+[Databricks Declarative Automation Bundles](https://docs.databricks.com/aws/en/dev-tools/bundles/jobs-tutorial), anteriormente Databricks Asset Bundles, versiona los mismos tres Jobs para DEV y PROD. El `run_as` común definido a nivel de bundle es **sp-centraulus-dbx-main** (application ID **acc15410-5c5f-473e-bc6f-61b7946176a2**) en ambos targets. DEV se desplegó interactivamente con **josrami**. Para la implementación académica de PROD, **sp-centraulus-dbx-main** también es la identidad de despliegue confiada por GitHub OIDC; GitHub no almacena ningún client secret.
+
+Estructura implementada de automatización y evidencias:
 
 ~~~text
+.github/workflows/deploy-prod.yml
 databricks.yml
 resources/
+├── metadata.job.yml
 ├── salesjson.job.yml
 ├── salescsv.job.yml
 └── saleslt.job.yml
+evidence/Automation/
+├── Bundles/
+├── GitHubActions/
+│   └── README.md
+└── Metadata/
+    └── README.md
 ~~~
 
-Cada Job operativo sigue **Bronze -> Silver -> Gold** y pasa `environment=dev` junto con el mismo ingestion timestamp `{{job.start_time.iso_datetime}}` a sus tres tareas.
+Cada Job operativo sigue **Bronze -> Silver -> Gold**, pasa `environment=dev|prod` según el target y comparte el ingestion timestamp `{{job.start_time.iso_datetime}}`.
 
-| Resource key | Compute DEV | Política explícita de retry | Trigger operacional DEV |
+| Resource key | Compute en DEV y PROD | Política explícita de retry | Comportamiento de triggers |
 |---|---|---|---|
-| **salesjson_medallion** | Serverless Jobs | Bronze: 2 retries / 30 s; Silver y Gold: 1 retry / 30 s | File Arrival sobre `abfss://landing@stcentralusjrdev.dfs.core.windows.net/salesjson/incoming/`; intervalo mínimo de 900 s y quiet period de 60 s |
-| **salescsv_medallion** | Classic shared single-node Jobs Compute: DBR 17.3 LTS, `Standard_D4ds_v4`, Photon, Standard access mode, `num_workers: 0`, sin autoscaling | Todas las tareas: 1 retry / 30 s | Cada 15 minutos en UTC (`:00/:15/:30/:45`) |
-| **saleslt_medallion** | Serverless Jobs sobre **fc_saleslt_dev**; la federación usa **sp-centraulus-azsql** | Bronze: 3 retries / 60 s; Silver y Gold: 1 retry / 30 s | Cada 15 minutos en UTC, desplazado 5 minutos (`:05/:20/:35/:50`) |
+| **salesjson_medallion** | Serverless Jobs | Bronze: 2 retries / 30 s; Silver y Gold: 1 retry / 30 s | File Arrival DEV `PAUSED`; PROD sin trigger |
+| **salescsv_medallion** | Classic single-node Job Compute: DBR 17.3 LTS, `Standard_D4ds_v4`, Photon, Standard access mode, `num_workers: 0`, sin autoscaling | Todas las tareas: 1 retry / 30 s | Schedule DEV `PAUSED`; PROD sin trigger |
+| **saleslt_medallion** | Serverless Jobs; la federación usa **sp-centraulus-azsql** | Bronze: 3 retries / 60 s; Silver y Gold: 1 retry / 30 s | Schedule DEV `PAUSED`; PROD sin trigger |
+| **metadata_documentation** | Tres tareas Serverless paralelas | Sin retries explícitos | Solo manual en ambos targets; sin schedule ni trigger |
 
-Todas las políticas explícitas usan `retry_on_timeout: true`. Los retries son seguros porque los workloads usan checkpoints o patrones idempotentes de Delta MERGE, no inserts ciegos que dupliquen datos.
+Todas las políticas explícitas usan `retry_on_timeout: true`. Los retries son seguros porque los workloads usan checkpoints o patrones idempotentes de Delta MERGE. Los triggers DEV se validaron brevemente y quedaron `PAUSED`; el target PROD no define triggers porque ADF sigue planificado como orquestador superior.
 
-Los tres triggers DEV se desplegaron brevemente como `UNPAUSED` para comprobar que la Jobs API los aceptaba y luego se redesplegaron como `PAUSED`. Quedan pausados tanto en el repositorio como en el workspace para evitar ejecuciones y costos innecesarios. Son triggers de evidencia a nivel de Job, no la capa final de orquestación empresarial; ADF sigue planificado como orquestador superior. El target PROD no define triggers.
-
-Los notebooks `98_metadata_documentation.ipynb` y `99_phase_validation.ipynb` siguen disponibles para documentación y validación de auditoría, pero quedan intencionalmente fuera de los Jobs operativos recurrentes.
+Los tres notebooks `98_metadata_documentation.ipynb` quedan intencionalmente fuera de los Jobs ETL operativos y se agrupan en el Job manual **Metadata Documentation**. No tiene schedule ni trigger, hereda el `run_as` del bundle **sp-centraulus-dbx-main** y recibe explícitamente el ambiente del target. Así se pueden aplicar los comentarios de PROD con la identidad controlada de runtime sin conceder a Jose ni a otros developers permisos interactivos sobre datos PROD. Los notebooks `99_phase_validation.ipynb` siguen disponibles para ejecuciones separadas de auditoría o troubleshooting y no forman parte del Job de metadata.
 
 Flujo DEV validado:
 
@@ -419,17 +433,27 @@ databricks bundle run -t dev saleslt_medallion
 databricks bundle summary -t dev
 ~~~
 
-Las evidencias de Phase 5.3 se guardan en `evidence/Automation/Bundles/`. Se debe capturar la validación y el despliegue final exitosos, el bundle summary con los tres Job IDs, los retries de cada Job, el File Arrival de SalesJSON, ambos schedules UTC y el estado final `PAUSED`. La guía de evidencias de Phase 5.3 en esa carpeta conserva la evidencia CLI y el checklist exacto de screenshots.
+### Despliegue CI/CD PROD exitoso
 
-La rama **dev_qa** despliega a DEV; la promoción a **main** desplegará a PROD más adelante. Todavía no se ha ejecutado ningún despliegue del bundle en PROD. Se mantiene la preferencia por workload identity federation/OIDC para evitar un client secret almacenado.
+El workflow **.github/workflows/deploy-prod.yml** se ejecuta con un push a **main** o mediante `workflow_dispatch`. Solicita `id-token: write`, autentica contra Databricks con GitHub OIDC y usa el GitHub Environment **prod** protegido por Required Reviewer. Tras la aprobación, el workflow completó correctamente:
+
+~~~text
+databricks bundle validate -t prod
+databricks bundle deploy -t prod
+databricks bundle summary -t prod
+databricks bundle run -t prod salescsv_medallion
+databricks bundle run -t prod salesjson_medallion
+databricks bundle run -t prod saleslt_medallion
+~~~
+
+El bundle se desplegó bajo **/Workspace/prod/ETLs**. Creó y ejecutó con éxito tres Jobs PROD: **SalesJSON Medallion** en Serverless, **SalesCSV Medallion** en classic single-node Job Compute y **SalesLT Medallion** en Serverless. No existe trigger ni schedule en PROD.
+
+La evidencia del Bundle DEV se conserva en **evidence/Automation/Bundles/**. La evidencia de CI/CD PROD, OIDC, GitHub Environment, workspace y Jobs se organiza en **evidence/Automation/GitHubActions/**. Las futuras capturas del Job de metadata se controlan en **evidence/Automation/Metadata/README.md**; no se declara ninguna captura antes de obtenerla.
 
 ## Estado
 
-- Fundación DEV y seguridad Unity Catalog: completas, incluidos el baseline de grants y ABAC.
-- Sales JSON Bronze, Silver, Gold, metadata, validación y evidencias: completos en DEV.
-- Sales CSV Bronze, Silver, Gold, metadata, validación y evidencias: completos en DEV.
-- SalesLT private federation, Bronze, Silver, Gold, metadata, validación y evidencias: completos en DEV.
-- Validación, despliegue y operational hardening Phase 5.3 del Bundle DEV: completos; los retries explícitos y triggers de evidencia están desplegados y todos los triggers quedan `PAUSED`.
-- Rama de trabajo actual: **dev_qa**.
-- Siguiente fase: bootstrap y despliegue de workloads en PROD pendientes.
-- ADF y visualización final: pendientes.
+- Fundación DEV, grants de Unity Catalog, ABAC, ETL, validaciones, evidencias, Bundle y operational hardening Phase 5.3: completos.
+- Fundación PROD, catálogos, schemas, grants de Unity Catalog, ABAC aplicado y validado manualmente, CI/CD con GitHub OIDC, `bundle validate/deploy/summary` y ejecuciones Bronze-to-Gold de los tres Jobs: completos.
+- Rama de trabajo actual: **dev_qa**; estos cambios de documentación requieren revisión antes de una promoción posterior a **main**.
+- Pendiente en PROD después de la promoción: desplegar y ejecutar el Job manual **Metadata Documentation** y capturar su evidencia. Ejecutar `99_phase_validation` por separado solo cuando se requiera evidencia de auditoría o troubleshooting.
+- Pendiente del proyecto: integrar ADF como orquestador superior; construir la capa de consumo (Dashboard, Genie o App); completar la limpieza y evidencia final.
