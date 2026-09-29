@@ -4,7 +4,7 @@
 
 ## Resumen ejecutivo
 
-El proyecto implementa una arquitectura lakehouse gobernada en Azure Databricks. DEV está completo con grants de Unity Catalog, ABAC, los tres ETL, Databricks Bundles y evidencias. La fundación, catálogos, grants y ABAC de PROD también están completos; ABAC PROD se aplicó y validó manualmente. GitHub Actions despliega mediante OIDC sin client secret y con aprobación obligatoria del Environment **prod**. El PR #3 promovió el cleanup de ambiente explícito y el Job manual **Metadata Documentation** a `main`; el Bundle se reconcilió en PROD y los cuatro Jobs muestran ejecuciones exitosas. Quedan ADF, la capa de consumo y el cierre final de evidencias/limpieza.
+El proyecto implementa una arquitectura lakehouse gobernada en Azure Databricks. DEV está completo con grants de Unity Catalog, ABAC, los tres ETL, Databricks Bundles y evidencias. La fundación, catálogos, grants y ABAC de PROD también están completos; ABAC PROD se aplicó y validó manualmente. GitHub Actions despliega mediante OIDC sin client secret y con aprobación obligatoria del Environment **prod**. ADF v2 **adf-centralus-prod** ejecuta en paralelo los tres Jobs operativos de PROD mediante **pl_databricks_medallion_prod**; el primer pipeline end-to-end y los runs correlacionados en Databricks terminaron correctamente. Quedan la capa de consumo y el cierre final de evidencias/limpieza.
 
 ~~~text
 15 JSON files / 150 Bronze rows
@@ -65,6 +65,8 @@ SalesLT: Azure SQL privado -> fc_saleslt_dev -> 5 Bronze snapshots
 | Jobs PROD | Tres ETL operativos más Metadata Documentation; sin triggers PROD | Jobs overview y workflow completo | 4/4 desplegados; los cuatro con ejecución exitosa |
 | Seguridad de parámetros | Widgets de ambiente con default vacío y validación exacta `dev`/`prod` | 18 notebooks parametrizados | Ejecución manual sin fallback silencioso a DEV |
 | Metadata PROD | Job `metadata_documentation`, tres tareas Serverless paralelas, manual, sin trigger y `run_as` del SP | `resources/metadata.job.yml` + `evidence/Automation/Metadata/README.md` | Desplegado y ejecutado con `environment=prod` |
+| Orquestación ADF PROD | ADF v2 `adf-centralus-prod`; pipeline `pl_databricks_medallion_prod`; linked service `ls_databricks_prod` con System-assigned Managed Identity | `evidence/Automation/ADF/` | 3 Jobs en paralelo y pipeline SUCCESS |
+| Separación de identidades ADF | ADF tiene `CAN MANAGE RUN` en 3 Jobs; sin grants UC/ADLS. Jobs conservan `run_as=sp-centraulus-dbx-main` | Bundle + permisos de Jobs + evidencia ADF | Validado |
 
 ## Recursos
 
@@ -73,6 +75,7 @@ SalesLT: Azure SQL privado -> fc_saleslt_dev -> 5 Bronze snapshots
 | Workspace | **dbw-centralus-dev01** | **dbw-centralus-prod01** |
 | Storage | **stcentralusjrdev** | **stcentralusjrprod** |
 | Access Connector | **dbac-centralus-dbx-dev** | **dbac-centralus-dbx-prod** |
+| Orquestador superior | No configurado | ADF v2 **adf-centralus-prod** |
 | Storage Credential | **dbac_centralus_dbx_dev** | **dbac_centralus_dbx_prod** |
 | Catálogos | saleslt_dev, salesjson_dev, salescsv_dev | saleslt_prod, salesjson_prod, salescsv_prod |
 | External Locations | ext_landing_dev, ext_lakehouse_dev, ext_streaming_dev | ext_landing_prod, ext_lakehouse_prod, ext_streaming_prod |
@@ -94,6 +97,7 @@ Los Access Connectors usan Managed Identity. Los nombres técnicos y comentarios
 | **grp-dbx-analysts** | USE y SELECT únicamente en Gold. |
 | **sp-centraulus-dbx-main** | `run_as` de los Jobs DEV/PROD y, en este proyecto académico, deploy identity de GitHub OIDC para PROD; no usa client secret almacenado. |
 | **sp-centraulus-azsql** | Identidad de la conexión federada Azure SQL / SalesLT en DEV. |
+| Managed Identity system-assigned de **adf-centralus-prod** | Solo control de ejecución: `CAN MANAGE RUN` sobre los tres Jobs PROD; sin acceso de data plane en Unity Catalog ni ADLS. |
 
 El ETL SP no recibe CREATE CATALOG, CREATE SCHEMA, MANAGE, OWNERSHIP ni acceso directo al Storage Credential.
 
@@ -252,6 +256,37 @@ Automatización:
 - **evidence/Automation/Bundles/**: validación, deploy, summary, retries y triggers `PAUSED` de DEV.
 - **evidence/Automation/GitHubActions/**: protección del Environment `prod`, CI/CD exitoso, despliegue en workspace y Jobs PROD.
 - **evidence/Automation/Metadata/**: estado confirmado del Job manual de metadata y checklist de capturas detalladas que faltan por recopilar.
+- **evidence/Automation/ADF/**: pipeline PROD exitoso y runs correspondientes verificados en Databricks.
+
+Solo se muestran capturas representativas; el resto del conjunto normalizado está organizado bajo **evidence/Medallion/**, **evidence/Security/** y **evidence/Automation/**. El índice corto está en **evidence/README.md**.
+
+Despliegue PROD exitoso en GitHub Actions:
+
+![Despliegue PROD exitoso en GitHub Actions](evidence/Automation/GitHubActions/07_prod_deployment_workflow_success.png)
+
+Pipeline ADF con los tres Jobs paralelos en estado exitoso:
+
+![Orquestación ADF exitosa](evidence/Automation/ADF/03_adf_pipeline_success.png)
+
+Los cuatro Jobs PROD administrados por el Bundle:
+
+![Resumen de Jobs PROD en Databricks](evidence/Automation/GitHubActions/09_prod_jobs_overview.png)
+
+Email enmascarado para la identidad analyst mediante ABAC:
+
+![Email enmascarado por ABAC para analyst](evidence/Security/ABAC/02_analyst_masked_customer_email.png)
+
+Row filter de país aplicado a la identidad analyst:
+
+![Row filter de país aplicado por ABAC](evidence/Security/ABAC/05_analyst_country_row_filter_applied.png)
+
+Schema evolution validado en Sales JSON:
+
+![Validación de schema evolution en Sales JSON](evidence/Medallion/salesjson/03_schema_evolution_validation.png)
+
+Reconciliación de las cinco tablas entre SQL Federation y Bronze:
+
+![Reconciliación de SQL Federation a Bronze en SalesLT](evidence/Medallion/saleslt/01_sql_federation_to_bronze_reconciliation.png)
 
 ## Automatización DEV y PROD
 
@@ -266,6 +301,8 @@ resources/
 ├── salescsv.job.yml
 └── saleslt.job.yml
 evidence/Automation/
+├── ADF/
+│   └── README.md
 ├── Bundles/
 ├── GitHubActions/
 │   └── README.md
@@ -277,7 +314,7 @@ evidence/Automation/
 - **salescsv_medallion**: classic single-node Job Compute con DBR 17.3 LTS, `Standard_D4ds_v4`, Photon, Standard access mode, `num_workers: 0` y sin autoscaling. Todas las tareas tienen 1 retry con intervalo de 30 s.
 - **saleslt_medallion**: Serverless Jobs; la conexión federada usa **sp-centraulus-azsql** y el runtime usa **sp-centraulus-dbx-main**. Bronze tiene 3 retries con intervalo de 60 s; Silver y Gold, 1 retry con 30 s.
 
-Los triggers de DEV se validaron temporalmente y quedaron `PAUSED`. PROD no tiene triggers ni schedules; ADF se añadirá como orquestador superior.
+Los triggers de DEV se validaron temporalmente y quedaron `PAUSED`. PROD no tiene triggers ni schedules en Databricks porque ADF es el orquestador superior activo.
 
 - **metadata_documentation** / **Metadata Documentation**: tres tareas Serverless paralelas para SalesJSON, SalesCSV y SalesLT. Es manual, no define schedule ni trigger, hereda `run_as` **sp-centraulus-dbx-main** y permite aplicar metadata PROD sin otorgar permisos interactivos de datos PROD a Jose/developers.
 - Los notebooks `99_phase_validation` se mantienen para auditoría o troubleshooting por separado y no forman parte de este Job.
@@ -305,10 +342,17 @@ Resultado observable:
 
 El PR #3 promovió a `main` el default vacío de los widgets `environment` y `resources/metadata.job.yml`. GitHub Actions volvió a ejecutar el flujo PROD y el Bundle reconcilió/actualizó los recursos existentes. **Metadata Documentation** quedó desplegado como el cuarto Job: manual, sin trigger ni schedule, con tres tareas Serverless paralelas y `run_as` **sp-centraulus-dbx-main**. El Job se ejecutó correctamente con `environment=prod` recibido desde el target, sin otorgar permisos interactivos PROD a Jose ni al grupo developers. Los notebooks 99 siguen separados para auditoría o troubleshooting y fuera del flujo operativo. El checklist de evidencia está en **evidence/Automation/Metadata/README.md**.
 
+### Orquestación PROD con Azure Data Factory
+
+ADF v2 **adf-centralus-prod** usa el pipeline **pl_databricks_medallion_prod** y el linked service **ls_databricks_prod**, creado desde la actividad Databricks Job con la Managed Identity system-assigned del factory y Serverless para la conexión de control.
+
+La identidad de ADF tiene `CAN MANAGE RUN` sobre **SalesJSON Medallion**, **SalesCSV Medallion** y **SalesLT Medallion**, pero no tiene permisos de data plane en Unity Catalog ni ADLS. Los Jobs siguen administrados por el Databricks Bundle y ejecutan como **sp-centraulus-dbx-main**. ADF lanza los tres en paralelo con retry **0**; los retries se mantienen en las tareas de Databricks. **Metadata Documentation** sigue manual y fuera del pipeline. La primera ejecución end-to-end finalizó con las tres actividades y el pipeline global en `Succeeded`, y los runs se correlacionaron en Databricks. **Estado ADF: COMPLETE.**
+
 ## Estado de la entrega
 
 - DEV completo: fundación, Unity Catalog grants, ABAC, tres ETL, metadata/validación, evidencia y Bundle con operational hardening.
-- PROD completo para esta fase: fundación, catálogos, schemas, grants, ABAC aplicado y validado manualmente, OIDC CI/CD, `bundle validate/deploy/summary`, tres Jobs Bronze-to-Gold exitosos, cleanup de ambiente explícito y **Metadata Documentation** desplegado/ejecutado.
-- El PR #3 ya está en `main`; el cierre documental se prepara en **dev_qa** y no se hace merge automático a **main**.
+- PROD completo para esta fase: fundación, catálogos, schemas, grants, ABAC aplicado y validado manualmente, OIDC CI/CD, `bundle validate/deploy/summary`, tres Jobs Bronze-to-Gold exitosos, cleanup de ambiente explícito, **Metadata Documentation** desplegado/ejecutado y orquestación ADF.
+- ADF v2 **adf-centralus-prod** ejecuta en paralelo los tres Jobs PROD mediante **pl_databricks_medallion_prod**; pipeline y runs correlacionados exitosos.
+- El cierre documental se prepara en **dev_qa** y no se hace merge automático a **main**.
 - Faltan capturas detalladas de metadata como evidencia, no su despliegue ni ejecución. Los notebooks 99 se ejecutan por separado solo cuando se necesiten para auditoría o troubleshooting.
-- Siguiente fase: ADF como orquestador superior; luego la capa de consumo (Dashboard, Genie o App); finalmente cleanup/evidencia final.
+- Pendiente: capa de consumo (Dashboard y Genie, con App opcional) y cierre final de evidencias/limpieza.
