@@ -4,7 +4,7 @@
 
 ## Resumen ejecutivo
 
-El proyecto implementa una arquitectura lakehouse gobernada en Azure Databricks. DEV está completo con grants de Unity Catalog, ABAC, los tres ETL y Databricks Bundles. La fundación, catálogos, grants y ABAC de PROD también están completos; ABAC PROD se aplicó y validó manualmente. GitHub Actions despliega mediante OIDC sin client secret, con aprobación obligatoria del Environment **prod**, y los tres Jobs PROD se crearon y ejecutaron correctamente. Quedan pendientes la promoción y ejecución del nuevo Job manual de metadata 98 en PROD, la evidencia correspondiente, ADF, la capa de consumo y el cierre final.
+El proyecto implementa una arquitectura lakehouse gobernada en Azure Databricks. DEV está completo con grants de Unity Catalog, ABAC, los tres ETL, Databricks Bundles y evidencias. La fundación, catálogos, grants y ABAC de PROD también están completos; ABAC PROD se aplicó y validó manualmente. GitHub Actions despliega mediante OIDC sin client secret y con aprobación obligatoria del Environment **prod**. El PR #3 promovió el cleanup de ambiente explícito y el Job manual **Metadata Documentation** a `main`; el Bundle se reconcilió en PROD y los cuatro Jobs muestran ejecuciones exitosas. Quedan ADF, la capa de consumo y el cierre final de evidencias/limpieza.
 
 ~~~text
 15 JSON files / 150 Bronze rows
@@ -62,9 +62,9 @@ SalesLT: Azure SQL privado -> fc_saleslt_dev -> 5 Bronze snapshots
 | SalesLT Gold | sales_by_product, sales_by_customer, monthly_sales_summary; aggregations y ranking | 03_gold_analytics + outputs | Completo |
 | SalesLT reconciliación | Silver, Product Gold y Monthly Gold | 99_phase_validation + evidence/Medallion/saleslt/ | 708690.07 en las 3 capas; PASS |
 | CI/CD | `deploy-prod.yml`; GitHub OIDC sin client secret; Environment `prod` con Required Reviewer | GitHub Actions + `evidence/Automation/GitHubActions/` | PROD exitoso |
-| Jobs PROD | SalesJSON y SalesLT Serverless; SalesCSV classic single-node Job Compute; sin triggers | Jobs overview y workflow completo | 3/3 creados y ejecutados |
+| Jobs PROD | Tres ETL operativos más Metadata Documentation; sin triggers PROD | Jobs overview y workflow completo | 4/4 desplegados; los cuatro con ejecución exitosa |
 | Seguridad de parámetros | Widgets de ambiente con default vacío y validación exacta `dev`/`prod` | 18 notebooks parametrizados | Ejecución manual sin fallback silencioso a DEV |
-| Metadata PROD | Job `metadata_documentation`, tres tareas Serverless, manual y sin trigger | `resources/metadata.job.yml` + `evidence/Automation/Metadata/README.md` | Listo para promoción y ejecución |
+| Metadata PROD | Job `metadata_documentation`, tres tareas Serverless paralelas, manual, sin trigger y `run_as` del SP | `resources/metadata.job.yml` + `evidence/Automation/Metadata/README.md` | Desplegado y ejecutado con `environment=prod` |
 
 ## Recursos
 
@@ -251,7 +251,7 @@ Automatización:
 
 - **evidence/Automation/Bundles/**: validación, deploy, summary, retries y triggers `PAUSED` de DEV.
 - **evidence/Automation/GitHubActions/**: protección del Environment `prod`, CI/CD exitoso, despliegue en workspace y Jobs PROD.
-- **evidence/Automation/Metadata/**: checklist para la futura validación, configuración y ejecución PROD del Job manual de metadata.
+- **evidence/Automation/Metadata/**: estado confirmado del Job manual de metadata y checklist de capturas detalladas que faltan por recopilar.
 
 ## Automatización DEV y PROD
 
@@ -301,14 +301,14 @@ Resultado observable:
 - **SalesJSON Medallion** creado y ejecutado en Serverless.
 - **SalesCSV Medallion** creado y ejecutado en classic single-node Job Compute.
 - **SalesLT Medallion** creado y ejecutado en Serverless.
-- Tres ejecuciones PROD exitosas y ningún trigger PROD.
+- Los tres ETL PROD siguen exitosos y sin triggers PROD.
 
-Los notebooks 98 no forman parte de los Jobs ETL operativos: ahora pertenecen al Job manual **Metadata Documentation**, que debe desplegarse y ejecutarse en PROD tras la promoción. Los notebooks 99 siguen separados para auditoría o troubleshooting. El checklist de evidencia del nuevo Job está en **evidence/Automation/Metadata/README.md**.
+El PR #3 promovió a `main` el default vacío de los widgets `environment` y `resources/metadata.job.yml`. GitHub Actions volvió a ejecutar el flujo PROD y el Bundle reconcilió/actualizó los recursos existentes. **Metadata Documentation** quedó desplegado como el cuarto Job: manual, sin trigger ni schedule, con tres tareas Serverless paralelas y `run_as` **sp-centraulus-dbx-main**. El Job se ejecutó correctamente con `environment=prod` recibido desde el target, sin otorgar permisos interactivos PROD a Jose ni al grupo developers. Los notebooks 99 siguen separados para auditoría o troubleshooting y fuera del flujo operativo. El checklist de evidencia está en **evidence/Automation/Metadata/README.md**.
 
 ## Estado de la entrega
 
 - DEV completo: fundación, Unity Catalog grants, ABAC, tres ETL, metadata/validación, evidencia y Bundle con operational hardening.
-- PROD completo para esta fase: fundación, catálogos, schemas, grants, ABAC aplicado y validado manualmente, OIDC CI/CD, `bundle validate/deploy/summary` y tres Jobs Bronze-to-Gold ejecutados.
-- Rama de trabajo: **dev_qa**; no se hace merge automático a **main**.
-- Pendiente en PROD después de la promoción: desplegar y ejecutar **Metadata Documentation** y capturar evidencia. Los notebooks 99 se ejecutan por separado solo cuando se necesiten para auditoría o troubleshooting.
-- Pendiente global: ADF como orquestador superior, capa de consumo (Dashboard, Genie o App) y cleanup/evidencia final.
+- PROD completo para esta fase: fundación, catálogos, schemas, grants, ABAC aplicado y validado manualmente, OIDC CI/CD, `bundle validate/deploy/summary`, tres Jobs Bronze-to-Gold exitosos, cleanup de ambiente explícito y **Metadata Documentation** desplegado/ejecutado.
+- El PR #3 ya está en `main`; el cierre documental se prepara en **dev_qa** y no se hace merge automático a **main**.
+- Faltan capturas detalladas de metadata como evidencia, no su despliegue ni ejecución. Los notebooks 99 se ejecutan por separado solo cuando se necesiten para auditoría o troubleshooting.
+- Siguiente fase: ADF como orquestador superior; luego la capa de consumo (Dashboard, Genie o App); finalmente cleanup/evidencia final.
