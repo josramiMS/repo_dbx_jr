@@ -6,7 +6,7 @@
 
 This repository implements a governed Azure Databricks lakehouse with separate DEV and PROD resources, Unity Catalog, Microsoft Entra identities, ADLS Gen2 external storage, and a medallion ETL architecture.
 
-The DEV foundation, Unity Catalog grants baseline, ABAC controls, all three ETLs—Sales JSON, Sales CSV, and SalesLT—Bundle automation, and evidence are functionally complete and documented. The PROD foundation, catalogs, grants, manually applied and validated ABAC, GitHub Actions/OIDC deployment, all four Jobs, and Azure Data Factory orchestration are also complete. ADF v2 **adf-centralus-prod** now runs the three operational PROD Jobs in parallel through **pl_databricks_medallion_prod**; the first end-to-end pipeline and all correlated Databricks runs succeeded. Power BI consumption is complete: the published **Sales & Inventory Executive Overview** reads Unity Catalog Gold PROD through the Databricks SQL Warehouse as a Data Analyst. Remaining consumption work is the Genie Agent and optional Databricks App, followed by the final evidence/cleanup pass.
+The DEV foundation, Unity Catalog grants baseline, ABAC controls, all three ETLs—Sales JSON, Sales CSV, and SalesLT—Bundle automation, and evidence are functionally complete and documented. The PROD foundation, catalogs, grants, manually applied and validated ABAC, GitHub Actions/OIDC deployment, all four Jobs, and Azure Data Factory orchestration are also complete. ADF v2 **adf-centralus-prod** now runs the three operational PROD Jobs in parallel through **pl_databricks_medallion_prod**; the first end-to-end pipeline and all correlated Databricks runs succeeded. Power BI consumption is complete: the published **Sales & Inventory Executive Overview** reads Unity Catalog Gold PROD through the Databricks SQL Warehouse as a Data Analyst. Conversational consumption is also complete: the PROD **Sales & Inventory Analytics Agent** uses the same governed Gold data through the existing SQL Warehouse, and the Data Analyst successfully consumed that agent from the Databricks Genie app in Microsoft Teams. Power BI and Genie now provide complementary dashboard and conversational paths. Remaining work is an optional Databricks App only if pursued, followed by final evidence cleanup and presentation preparation.
 
 Validated Sales JSON outcome:
 
@@ -383,6 +383,8 @@ repo_dbx_jr/
 │   └── Metadata/
 │       └── README.md
 ├── evidence/Consumption/
+│   ├── Genie/
+│   │   └── README.md
 │   └── PowerBI/
 │       └── README.md
 ├── evidence/Medallion/
@@ -530,6 +532,25 @@ No artificial relationships were created between aggregated Gold tables. Each vi
 
 The concise screenshot checklist and the rest of the Power BI evidence are in **evidence/Consumption/PowerBI/**.
 
+## Databricks Genie and Microsoft Teams consumption
+
+**Genie Agent status: COMPLETE. Microsoft Teams integration status: COMPLETE.** The PROD **Sales & Inventory Analytics Agent** uses the existing Databricks SQL Warehouse and Unity Catalog Gold PROD tables for governed sales and inventory analytics.
+
+Its General Instructions select the correct Gold table for each workload, use `net_revenue` as the default revenue metric, forbid inferred joins between SalesJSON, SalesCSV, and SalesLT, and prevent treating similarly named IDs from different workloads as equivalent. The agent also follows Unity Catalog permissions and governed policies.
+
+The semantic tuning contains **6 example queries**, **2 measures**, and **1 filter**. The example queries cover total and monthly SalesLT net revenue, SalesJSON category revenue, customer spending by country, products below reorder level, and inventory value by warehouse. The measures are **Total SalesLT Net Revenue** and **Total Inventory Value**; the reusable filter is **Low Stock**.
+
+Validated Genie results include:
+
+- total SalesLT net revenue of **708,690.07**;
+- inventory value broken down by warehouse with a generated chart;
+- **3** products below reorder level: **Gaming Laptop**, **Conference Speaker**, and **Mini PC**;
+- **Costa Rica** as the highest-spending country in the current SalesJSON customer summary, with **29,956.50** across **18 customers**.
+
+The Databricks Genie app in Microsoft Teams was connected to the same **Sales & Inventory Analytics Agent**. The **Data Analyst** successfully asked `Which products are currently below reorder level?` and received the same three governed results with sources. Teams is an external consumer surface; query execution, data access, and governance remain in Databricks and Unity Catalog. Power BI and Genie therefore represent two complementary consumption paths: a curated BI dashboard and conversational analytics.
+
+The complete, normalized Genie and Teams screenshot set is documented under **evidence/Consumption/Genie/**.
+
 ## Representative evidence
 
 Only representative screenshots are shown here; the complete, normalized evidence set is organized under **evidence/Medallion/**, **evidence/Security/**, **evidence/Automation/**, and **evidence/Consumption/**. See **evidence/README.md** for the short index.
@@ -545,6 +566,22 @@ The completed report in Power BI Desktop:
 The published report in the Power BI Service workspace DBXJR:
 
 ![Published Power BI Service dashboard](evidence/Consumption/PowerBI/03_powerbi_service_published_dashboard.png)
+
+The PROD Genie Agent overview defines its sales and inventory scope:
+
+![Sales and Inventory Analytics Agent overview](evidence/Consumption/Genie/01_genie_agent_overview.png)
+
+The curated Genie examples show the six queries, two measures, and Low Stock filter:
+
+![Curated Genie queries measures and filter](evidence/Consumption/Genie/04_genie_agent_examples.png)
+
+Genie returns the warehouse inventory breakdown and chart from Gold PROD:
+
+![Genie inventory value by warehouse result](evidence/Consumption/Genie/06_genie_inventory_value_by_warehouse.png)
+
+The Data Analyst receives the governed low-stock result through Microsoft Teams:
+
+![Microsoft Teams Genie low stock query](evidence/Consumption/Genie/10_teams_genie_low_stock_query.png)
 
 GitHub Actions PROD deployment completed successfully:
 
@@ -580,6 +617,8 @@ SalesLT federation and Bronze row counts reconcile across all five source tables
 - PROD foundation, catalogs, schemas, Unity Catalog grants, manually applied and validated ABAC, GitHub OIDC CI/CD, three successful Bronze-to-Gold ETL Job runs, explicit-environment cleanup, successful deployment/run of **Metadata Documentation**, and ADF orchestration: complete.
 - ADF v2 **adf-centralus-prod** runs the three PROD ETL Jobs in parallel through **pl_databricks_medallion_prod**; the first end-to-end pipeline and correlated Databricks runs succeeded.
 - Power BI consumption: complete. **Sales & Inventory Executive Overview** is published in Power BI Service and consumes PROD Gold through the Databricks SQL Warehouse as Data Analyst.
+- Databricks Genie consumption: complete. **Sales & Inventory Analytics Agent** uses the existing PROD SQL Warehouse, governed Gold tables, workload-safe instructions, and the curated set of 6 example queries, 2 measures, and 1 filter.
+- Microsoft Teams integration: complete. The Data Analyst connected the Databricks Genie app to the same agent and validated the three-product low-stock response with sources.
 - This documentation closure is prepared on **dev_qa** without an automatic merge to `main`.
 - Detailed metadata screenshots remain to be captured as evidence, but the PROD deployment and execution are not pending. Run `99_phase_validation` separately only when audit or troubleshooting evidence is needed.
-- Remaining consumption: Genie Agent and optional Databricks App, followed by the final evidence/cleanup pass.
+- Remaining work: optional Databricks App only if pursued, plus final evidence cleanup and presentation preparation.
