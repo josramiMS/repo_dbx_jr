@@ -12,5 +12,6 @@ Only representative screenshots are embedded in the project READMEs. The complet
 - `Automation/Metadata/` — manual Metadata Documentation Job evidence checklist.
 - `Automation/ADF/` — completed ADF v2 orchestration and correlated Databricks runs.
 - `Consumption/PowerBI/` — completed Power BI consumption path, Databricks Query History, Desktop dashboard, and published Power BI Service report.
+- `Consumption/Genie/` — completed PROD Genie Agent tuning and validation, plus the successful Microsoft Teams Databricks Genie consumption path.
 
 PNG files use ordered, descriptive English names within each folder.

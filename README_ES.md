@@ -6,7 +6,7 @@
 
 Este repositorio implementa una arquitectura lakehouse gobernada en Azure Databricks con recursos separados para DEV y PROD, Unity Catalog, identidades de Microsoft Entra, almacenamiento externo en ADLS Gen2 y un diseño ETL Medallion.
 
-La fundación DEV, el baseline de grants de Unity Catalog, los controles ABAC, los tres ETL —Sales JSON, Sales CSV y SalesLT—, la automatización con Bundle y sus evidencias están funcionalmente completos y documentados. También están completos en PROD la fundación, los catálogos, los grants, ABAC aplicado y validado manualmente, el despliegue con GitHub Actions/OIDC, los cuatro Jobs y la orquestación con Azure Data Factory. ADF v2 **adf-centralus-prod** ahora ejecuta en paralelo los tres Jobs operativos de PROD mediante **pl_databricks_medallion_prod**; el primer pipeline end-to-end y todos los runs correlacionados en Databricks finalizaron correctamente. El consumo Power BI está completo: **Sales & Inventory Executive Overview** fue publicado y consulta Gold PROD mediante el Databricks SQL Warehouse con la identidad Data Analyst. Quedan el Genie Agent, la Databricks App opcional y el cierre final de evidencias/limpieza.
+La fundación DEV, el baseline de grants de Unity Catalog, los controles ABAC, los tres ETL —Sales JSON, Sales CSV y SalesLT—, la automatización con Bundle y sus evidencias están funcionalmente completos y documentados. También están completos en PROD la fundación, los catálogos, los grants, ABAC aplicado y validado manualmente, el despliegue con GitHub Actions/OIDC, los cuatro Jobs y la orquestación con Azure Data Factory. ADF v2 **adf-centralus-prod** ahora ejecuta en paralelo los tres Jobs operativos de PROD mediante **pl_databricks_medallion_prod**; el primer pipeline end-to-end y todos los runs correlacionados en Databricks finalizaron correctamente. El consumo Power BI está completo: **Sales & Inventory Executive Overview** fue publicado y consulta Gold PROD mediante el Databricks SQL Warehouse con la identidad Data Analyst. También está completo el consumo conversacional: el agente PROD **Sales & Inventory Analytics Agent** usa los mismos datos Gold gobernados mediante el SQL Warehouse existente, y Data Analyst consumió correctamente ese agente desde la aplicación Databricks Genie en Microsoft Teams. Power BI y Genie ofrecen ahora rutas complementarias de dashboard y analítica conversacional. Solo queda una Databricks App opcional si se decide desarrollarla, además del cierre final de evidencias y la preparación de la presentación.
 
 ~~~text
 15 archivos JSON / 150 filas Bronze
@@ -359,6 +359,8 @@ repo_dbx_jr/
 │   └── Metadata/
 │       └── README.md
 ├── evidence/Consumption/
+│   ├── Genie/
+│   │   └── README.md
 │   └── PowerBI/
 │       └── README.md
 ├── evidence/Medallion/
@@ -506,6 +508,25 @@ No se crearon relaciones artificiales entre tablas Gold agregadas. Cada visual c
 
 El checklist breve y el resto de las evidencias Power BI están en **evidence/Consumption/PowerBI/**.
 
+## Consumo con Databricks Genie y Microsoft Teams
+
+**Estado del Genie Agent: COMPLETE. Estado de la integración con Microsoft Teams: COMPLETE.** El agente PROD **Sales & Inventory Analytics Agent** usa el Databricks SQL Warehouse existente y las tablas Gold PROD de Unity Catalog para ofrecer analítica gobernada de ventas e inventario.
+
+Sus General Instructions seleccionan la tabla Gold correcta por workload, usan `net_revenue` como métrica predeterminada de revenue, prohíben inferir joins entre SalesJSON, SalesCSV y SalesLT, y evitan tratar como equivalentes los IDs similares de workloads distintos. El agente también respeta los permisos y las políticas gobernadas de Unity Catalog.
+
+El tuning semántico contiene **6 example queries**, **2 measures** y **1 filter**. Las preguntas cubren revenue SalesLT total y mensual, revenue de categorías SalesJSON, gasto de clientes por país, productos bajo el reorder level e inventory value por warehouse. Las measures son **Total SalesLT Net Revenue** y **Total Inventory Value**; el filtro reutilizable es **Low Stock**.
+
+Resultados validados en Genie:
+
+- revenue neto total de SalesLT: **708,690.07**;
+- inventory value desglosado por warehouse con gráfico generado;
+- **3** productos bajo el reorder level: **Gaming Laptop**, **Conference Speaker** y **Mini PC**;
+- **Costa Rica** como país con mayor gasto en el resumen actual de clientes SalesJSON, con **29,956.50** sobre **18 clientes**.
+
+La aplicación Databricks Genie en Microsoft Teams se conectó al mismo **Sales & Inventory Analytics Agent**. La identidad **Data Analyst** preguntó `Which products are currently below reorder level?` y recibió los mismos tres resultados gobernados con sus fuentes. Teams funciona como superficie externa de consumo; la ejecución de queries, el acceso a datos y el gobierno permanecen en Databricks y Unity Catalog. Power BI y Genie representan así dos rutas complementarias: dashboard BI curado y analítica conversacional.
+
+El conjunto completo y normalizado de capturas Genie y Teams está documentado bajo **evidence/Consumption/Genie/**.
+
 ## Evidencias representativas
 
 Aquí solo se muestran capturas representativas; el conjunto completo y normalizado se organiza bajo **evidence/Medallion/**, **evidence/Security/**, **evidence/Automation/** y **evidence/Consumption/**. El índice corto está en **evidence/README.md**.
@@ -521,6 +542,22 @@ El reporte terminado en Power BI Desktop:
 El reporte publicado en el workspace DBXJR de Power BI Service:
 
 ![Dashboard publicado en Power BI Service](evidence/Consumption/PowerBI/03_powerbi_service_published_dashboard.png)
+
+El overview del Genie Agent PROD define su alcance de ventas e inventario:
+
+![Resumen del agente de analítica de ventas e inventario](evidence/Consumption/Genie/01_genie_agent_overview.png)
+
+Los ejemplos curados muestran las seis queries, las dos measures y el filtro Low Stock:
+
+![Queries measures y filtro configurados en Genie](evidence/Consumption/Genie/04_genie_agent_examples.png)
+
+Genie devuelve el desglose y gráfico de inventory value por warehouse desde Gold PROD:
+
+![Resultado de inventory value por warehouse en Genie](evidence/Consumption/Genie/06_genie_inventory_value_by_warehouse.png)
+
+Data Analyst recibe en Microsoft Teams el resultado gobernado de productos bajo reorder level:
+
+![Consulta de low stock en Microsoft Teams con Genie](evidence/Consumption/Genie/10_teams_genie_low_stock_query.png)
 
 Despliegue PROD completado correctamente por GitHub Actions:
 
@@ -556,6 +593,8 @@ Los conteos de SalesLT reconcilian entre SQL Federation y Bronze para las cinco 
 - Fundación PROD, catálogos, schemas, grants de Unity Catalog, ABAC aplicado y validado manualmente, CI/CD con GitHub OIDC, tres Jobs ETL Bronze-to-Gold exitosos, cleanup de ambiente explícito, despliegue/ejecución exitosa de **Metadata Documentation** y orquestación ADF: completos.
 - ADF v2 **adf-centralus-prod** ejecuta en paralelo los tres Jobs ETL de PROD mediante **pl_databricks_medallion_prod**; el primer pipeline end-to-end y los runs correlacionados en Databricks finalizaron correctamente.
 - Consumo Power BI: completo. **Sales & Inventory Executive Overview** está publicado en Power BI Service y consume Gold PROD mediante el Databricks SQL Warehouse como Data Analyst.
+- Consumo Databricks Genie: completo. **Sales & Inventory Analytics Agent** usa el SQL Warehouse PROD existente, tablas Gold gobernadas, instrucciones seguras por workload y el conjunto curado de 6 example queries, 2 measures y 1 filter.
+- Integración Microsoft Teams: completa. Data Analyst conectó la aplicación Databricks Genie al mismo agente y validó la respuesta con tres productos low stock y sus fuentes.
 - Este cierre documental se prepara en **dev_qa** sin merge automático a `main`.
 - Las capturas detalladas de metadata todavía deben completarse como evidencia, pero el despliegue y la ejecución PROD no están pendientes. Ejecutar `99_phase_validation` por separado solo cuando se requiera evidencia de auditoría o troubleshooting.
-- Consumo pendiente: Genie Agent y Databricks App opcional; después, cierre final de evidencias/limpieza.
+- Trabajo restante: Databricks App opcional solo si se decide desarrollarla, más cierre final de evidencias y preparación de la presentación.
