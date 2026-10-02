@@ -22,7 +22,7 @@
 
 ![Arquitectura Azure del proyecto](evidence/Architecture/01_azure_deployment_architecture.png)
 
-*El diagrama muestra la separación de workspaces, redes, datos, private endpoints, DNS, Azure SQL, ADF y servicios compartidos.*
+*El diagrama demuestra la separación desplegada de DEV y PROD en workspaces, redes y datos, además de la conectividad privada y las rutas de automatización y consumo.*
 
 | Recurso | DEV | PROD |
 |---|---|---|
@@ -71,6 +71,8 @@ El diagrama incluye VNets/subnets por ambiente, peering, private endpoints y Pri
 
 ![Reconciliación de Azure SQL Federation a Bronze](evidence/Medallion/saleslt/01_sql_federation_to_bronze_reconciliation.png)
 
+*Las cinco tablas federadas de Azure SQL coinciden con sus snapshots Bronze, demostrando una ingesta completa a través de la conectividad privada.*
+
 ## Gobierno, seguridad e identidades
 
 `security/00_unity_catalog_grants.ipynb` implementa el baseline: developers trabajan en DEV, analysts consultan solo Gold y el service principal ETL opera las capas necesarias sin ownership de catálogos ni acceso directo al storage credential. Developers no tienen acceso directo a PROD.
@@ -82,7 +84,9 @@ El diagrama incluye VNets/subnets por ambiente, peering, private endpoints y Pri
 | Column mask sobre `customer_email` | Se conserva primera letra/dominio y se oculta el resto |
 | Row filter sobre `country` | Solo Costa Rica: **34 filas**, frente a **92** para identidad privilegiada |
 
-![Máscara ABAC visible para Data Analyst](evidence/Security/ABAC/02_analyst_masked_customer_email.png)
+![Row filter ABAC aplicado al Data Analyst](evidence/Security/ABAC/05_analyst_country_row_filter_applied.png)
+
+*La consulta ejecutada como Data Analyst devuelve únicamente Costa Rica y 34 clientes, demostrando el efecto real del row filter en lugar de limitarse a mostrar su configuración.*
 
 Separación de identidades:
 
@@ -107,11 +111,15 @@ GitHub Actions solicita `id-token: write`, no almacena client secret, usa aproba
 
 ![GitHub Actions con despliegue y tres Jobs PROD exitosos](evidence/Automation/GitHubActions/07_prod_deployment_workflow_success.png)
 
+*El workflow protegido completó el validate/deploy del Bundle y los tres Jobs PROD, demostrando una promoción integral y exitosa desde `main`.*
+
 ## Orquestación ADF
 
 ADF v2 `adf-centralus-prod` ejecuta `pl_databricks_medallion_prod` mediante `ls_databricks_prod`. La Managed Identity del factory y la conexión de control Serverless inician **SalesJSON Medallion**, **SalesCSV Medallion** y **SalesLT Medallion** en paralelo. ADF usa retry `0`; los reintentos se mantienen dentro de los Jobs. El pipeline y los runs correlacionados terminaron en `Succeeded`.
 
 ![ADF ejecutando los tres Jobs PROD en paralelo](evidence/Automation/ADF/03_adf_pipeline_success.png)
+
+*Las tres actividades paralelas aparecen exitosas y el pipeline figura como `Succeeded`, confirmando la orquestación de producción de extremo a extremo.*
 
 ## Consumo y valor de negocio
 
@@ -121,17 +129,23 @@ ADF v2 `adf-centralus-prod` ejecuta `pl_databricks_medallion_prod` mediante `ls_
 
 ![Dashboard publicado en Power BI Service](evidence/Consumption/PowerBI/03_powerbi_service_published_dashboard.png)
 
+*El reporte publicado demuestra el resultado consumible en Power BI Service con métricas de ventas, inventario y reposición provenientes de Gold PROD.*
+
 ### Genie y Microsoft Teams — valor adicional completo
 
 El **Sales & Inventory Analytics Agent** usa ocho tablas Gold, 6 example queries, 2 measures y 1 filtro. Sus instrucciones evitan mezclar workloads o inventar relaciones. Se validaron ingresos SalesLT, inventario por bodega, bajo stock y análisis por país. Data Analyst obtuvo en Teams los mismos tres productos de bajo stock con fuentes gobernadas.
 
 ![Genie Agent consumido desde Microsoft Teams](evidence/Consumption/Genie/10_teams_genie_low_stock_query.png)
 
+*Teams devuelve los tres productos bajo el nivel de reposición con fuentes del Genie Agent, demostrando una respuesta gobernada fuera del workspace de Databricks.*
+
 ### Databricks App — bonus completo
 
 La UI Streamlit `apps/sales_inventory_assistant/` está desplegada y corriendo en PROD desde `main`. Usa `WorkspaceClient()` y el App Resource `genie-space`; no consulta tablas directamente ni contiene tokens/IDs hardcodeados. Mantiene conversación, ofrece cuatro quick prompts y preguntas libres. Query History muestra su service principal invocando el Agent y el SQL Warehouse. La conversación completa está incluida en `evidence/Consumption/DatabricksApp/`.
 
-![App PROD activa y desplegada desde main](evidence/Consumption/DatabricksApp/07_databricks_app_prod_deployment_main.png)
+![Databricks App respondiendo sobre bajo stock e inventario](evidence/Consumption/DatabricksApp/03_databricks_app_low_stock_and_inventory.png)
+
+*La App en ejecución responde dos preguntas de negocio en una misma sesión, demostrando funcionamiento real sobre el Genie Agent en vez de una pantalla de despliegue/configuración.*
 
 ## Características operativas evaluables
 
@@ -165,11 +179,13 @@ La UI Streamlit `apps/sales_inventory_assistant/` está desplegada y corriendo e
 
 ![Microsoft Certified Azure Data Fundamentals](certs/01_microsoft_certified_azure_data_fundamentals.png)
 
+[Validar Microsoft Certified: Azure Data Fundamentals en Microsoft Learn](https://learn.microsoft.com/api/credentials/share/en-us/JoseRamirezPerez-8751/A1E2FCADA4221D87?sharingId=30380780EC9BDDFE).
+
 ### Microsoft Certified: Azure Databricks Data Engineer Associate
 
 ![Microsoft Certified Azure Databricks Data Engineer Associate](certs/02_microsoft_certified_azure_databricks_data_engineer_associate.png)
 
-[Validar la credencial Azure Databricks en Microsoft Learn](https://learn.microsoft.com/en-us/users/joseramirezperez-8751/credentials/certification/implementing-data-engineering-solutions-using-azure-databricks?tab=credentials-tab).
+[Validar Microsoft Certified: Azure Databricks Data Engineer Associate en Microsoft Learn](https://learn.microsoft.com/api/credentials/share/en-us/JoseRamirezPerez-8751/A202A46AB7C55BCE?sharingId=30380780EC9BDDFE).
 
 ## Conclusión de evaluación
 

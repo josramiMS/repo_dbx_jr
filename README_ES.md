@@ -43,7 +43,7 @@ El mismo repositorio promueve código probado de `dev_qa` a `main`. GitHub Actio
 
 ![Arquitectura de despliegue en Azure](evidence/Architecture/01_azure_deployment_architecture.png)
 
-*El diagrama documenta workspaces Databricks separados, segmentos de red, private endpoints, Private DNS, ADLS, Azure SQL, servicios compartidos, ADF y las conexiones entre ellos.*
+*El diagrama demuestra la separación desplegada de DEV y PROD en Databricks, redes, private endpoints, Private DNS, ADLS y Azure SQL, además de cómo GitHub, ADF, Power BI, Teams y la Databricks App se conectan a la plataforma.*
 
 La solución puede entenderse como tres planos que cooperan:
 
@@ -264,47 +264,49 @@ repo_dbx_jr/
 
 El README muestra solo una selección curada. La colección completa y numerada está en [`evidence/`](evidence/README.md).
 
-### Ingeniería y seguridad
+### Resultados de ingeniería de datos
 
-Azure SQL federado y Bronze coinciden para las cinco tablas SalesLT:
+![Reconciliación Silver-Gold de SalesCSV](evidence/Medallion/salescsv/07_silver_to_gold_reconciliation.png)
 
-![Reconciliación de Federation a Bronze](evidence/Medallion/saleslt/01_sql_federation_to_bronze_reconciliation.png)
+*Silver y Gold reconcilian las mismas 1,814 unidades netas y 241,220.50 de valor de inventario, demostrando que las agregaciones conservan los totales de negocio validados.*
 
-El analyst observa correos protegidos por ABAC:
+### Resultado de seguridad
 
-![Máscara ABAC de correo para analyst](evidence/Security/ABAC/02_analyst_masked_customer_email.png)
+![Row filter ABAC aplicado al analyst](evidence/Security/ABAC/05_analyst_country_row_filter_applied.png)
+
+*Al ejecutar la consulta como analyst, ABAC expone únicamente las 34 filas de clientes de Costa Rica; la comparación privilegiada devuelve las 92 filas y permanece en la colección completa.*
 
 ### Promoción y orquestación
 
-GitHub Actions validó/desplegó el Bundle PROD y completó los tres Jobs:
-
 ![Despliegue PROD exitoso en GitHub Actions](evidence/Automation/GitHubActions/07_prod_deployment_workflow_success.png)
 
-ADF lanzó los tres Jobs en paralelo y el pipeline terminó correctamente:
+*El workflow protegido de GitHub Actions completó la validación/despliegue del Bundle y los tres workloads PROD—SalesCSV, SalesJSON y SalesLT—en una sola promoción exitosa.*
 
 ![Pipeline PROD exitoso en ADF](evidence/Automation/ADF/03_adf_pipeline_success.png)
 
-### Consumo gobernado
+*ADF muestra tres actividades de Databricks en paralelo y un pipeline en estado `Succeeded`, demostrando que el orquestador de producción inició correctamente todos los workloads.*
 
-El reporte ejecutivo está publicado en Power BI Service:
+### Consumo gobernado
 
 ![Reporte ejecutivo publicado](evidence/Consumption/PowerBI/03_powerbi_service_published_dashboard.png)
 
-El mismo Genie Agent entrega en Teams la respuesta de bajo stock con fuentes:
+*El dashboard ejecutivo está publicado en el workspace de Power BI Service—no solo abierto en Desktop—y presenta ingresos, órdenes, clientes, inventario y reposición desde Gold PROD.*
+
+![Power BI como fuente en Query History](evidence/Consumption/PowerBI/01_databricks_query_history_powerbi.png)
+
+*Query History identifica `Power BI` como fuente y `Data Analyst` como usuario, demostrando que la ruta de BI publicada llega al SQL Warehouse gobernado.*
 
 ![Resultado Genie en Microsoft Teams](evidence/Consumption/Genie/10_teams_genie_low_stock_query.png)
 
-La Databricks App responde varias preguntas gobernadas en la misma sesión:
+*Microsoft Teams devuelve los mismos tres productos con bajo stock y sus fuentes, demostrando el consumo exitoso del Genie Agent fuera del workspace de Databricks.*
 
 ![Conversación de bajo stock e inventario en la App](evidence/Consumption/DatabricksApp/03_databricks_app_low_stock_and_inventory.png)
 
-Query History identifica el service principal de la App detrás de la ejecución Agent/SQL:
+*La App en ejecución responde preguntas de bajo stock e inventario por bodega en una misma sesión, demostrando un flujo real de negocio en lugar de una pantalla de configuración.*
 
 ![Service principal de la App en Query History](evidence/Consumption/DatabricksApp/05_databricks_app_query_history_service_principal.png)
 
-La App PROD está ejecutándose desde `main` y su despliegue terminó correctamente:
-
-![Despliegue de la App desde main](evidence/Consumption/DatabricksApp/07_databricks_app_prod_deployment_main.png)
+*Query History atribuye el SQL generado por el Agent al service principal de la Databricks App, demostrando que las solicitudes gobernadas se ejecutan con identidad administrada y no con un token personal.*
 
 ## Certificaciones y credenciales
 
@@ -314,11 +316,13 @@ El proyecto está respaldado por estas credenciales Microsoft activas, almacenad
 
 ![Microsoft Certified Azure Data Fundamentals](certs/01_microsoft_certified_azure_data_fundamentals.png)
 
+[Validar Microsoft Certified: Azure Data Fundamentals en Microsoft Learn](https://learn.microsoft.com/api/credentials/share/en-us/JoseRamirezPerez-8751/A1E2FCADA4221D87?sharingId=30380780EC9BDDFE).
+
 ### Microsoft Certified: Azure Databricks Data Engineer Associate
 
 ![Microsoft Certified Azure Databricks Data Engineer Associate](certs/02_microsoft_certified_azure_databricks_data_engineer_associate.png)
 
-[Validar la credencial Azure Databricks en Microsoft Learn](https://learn.microsoft.com/en-us/users/joseramirezperez-8751/credentials/certification/implementing-data-engineering-solutions-using-azure-databricks?tab=credentials-tab).
+[Validar Microsoft Certified: Azure Databricks Data Engineer Associate en Microsoft Learn](https://learn.microsoft.com/api/credentials/share/en-us/JoseRamirezPerez-8751/A202A46AB7C55BCE?sharingId=30380780EC9BDDFE).
 
 ## Resultado final
 
