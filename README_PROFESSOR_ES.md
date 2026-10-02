@@ -1,6 +1,6 @@
 # Guía de evaluación — Proyecto Lakehouse en Azure Databricks
 
-[README completo en español](README_ES.md) · [English version](README.md) · [Índice de evidencias](evidence/README.md)
+[README completo en español](README_ES.md) · [English version](README.md) · [Índice de evidencias](evidence/README_ES.md)
 
 **Estado de la entrega: COMPLETO.** El proyecto implementa y demuestra un lakehouse gobernado con separación DEV/PROD, tres pipelines Medallion, seguridad en Unity Catalog, automatización, despliegue PROD, orquestación ADF y múltiples canales de consumo. La Databricks App es una extensión bonus adicional al alcance principal.
 
@@ -8,21 +8,19 @@
 
 | Área | Evidencia de cumplimiento | Clasificación |
 |---|---|---|
-| Arquitectura Azure DEV/PROD | Workspaces, ADLS, Access Connectors, redes, private endpoints, Private DNS y recursos por ambiente | **Requisito principal — completo** |
-| Ingesta y Medallion | SalesJSON, SalesCSV y SalesLT con Bronze/Silver/Gold, calidad y reconciliación | **Requisito principal — completo** |
-| Gobierno y seguridad | Unity Catalog, external locations, grupos/SPs, mínimo privilegio y ABAC | **Requisito principal — completo** |
-| Automatización | Bundle `dbx-medallion-automation`, Jobs, reintentos, GitHub Actions y OIDC | **Requisito principal — completo** |
-| Producción | Promoción `dev_qa -> PR -> main`, validate/deploy y ejecuciones PROD exitosas | **Requisito principal — completo** |
-| Orquestación | ADF v2 ejecuta los tres Jobs PROD en paralelo con Managed Identity | **Requisito principal — completo** |
-| BI | Dashboard ejecutivo publicado en Power BI Service desde Gold PROD | **Requisito principal — completo** |
-| Analítica conversacional | Genie Agent gobernado y consumo desde Microsoft Teams | **Valor adicional — completo** |
-| Aplicación de datos | Streamlit Databricks App sobre el Genie Agent, desplegada en PROD desde `main` | **Bonus — completo** |
+| Arquitectura Azure DEV/PROD | [Workspaces, ADLS, redes, private endpoints, DNS y recursos por ambiente](evidence/Architecture/README_ES.md) | **Requisito principal — completo** |
+| Ingesta y Medallion | [SalesJSON](evidence/Medallion/salesjson/README_ES.md), [SalesCSV](evidence/Medallion/salescsv/README_ES.md) y [SalesLT](evidence/Medallion/saleslt/README_ES.md) con calidad y reconciliación | **Requisito principal — completo** |
+| Gobierno y seguridad | [Grants de Unity Catalog](evidence/Security/UC_GRANTS/README_ES.md) y [ABAC](evidence/Security/ABAC/README_ES.md) | **Requisito principal — completo** |
+| Automatización | [Bundle, Jobs, reintentos y metadata](evidence/Automation/Bundles/README_ES.md) | **Requisito principal — completo** |
+| Producción | [GitHub Actions, OIDC, aprobación y ejecuciones PROD](evidence/Automation/GitHubActions/README_ES.md) | **Requisito principal — completo** |
+| Orquestación | [ADF ejecuta los tres Jobs PROD en paralelo](evidence/Automation/ADF/README_ES.md) | **Requisito principal — completo** |
+| BI | [Dashboard publicado en Power BI Service desde Gold PROD](evidence/Consumption/PowerBI/README_ES.md) | **Requisito principal — completo** |
+| Analítica conversacional | [Genie Agent gobernado y consumo desde Microsoft Teams](evidence/Consumption/Genie/README_ES.md) | **Valor adicional — completo** |
+| Aplicación de datos | [Databricks App sobre Genie desplegada desde `main`](evidence/Consumption/DatabricksApp/README_ES.md) | **Bonus — completo** |
 
 ## Arquitectura y separación de ambientes
 
-![Arquitectura Azure del proyecto](evidence/Architecture/01_azure_deployment_architecture.png)
-
-*El diagrama demuestra la separación desplegada de DEV y PROD en workspaces, redes y datos, además de la conectividad privada y las rutas de automatización y consumo.*
+Evidencia directa: [Arquitectura Azure DEV/PROD](evidence/Architecture/README_ES.md).
 
 | Recurso | DEV | PROD |
 |---|---|---|
@@ -51,7 +49,7 @@ El diagrama incluye VNets/subnets por ambiente, peering, private endpoints y Pri
 - Bronze Serverless con Auto Loader, Managed File Events, checkpoints, metadata de archivo, `_rescued_data`, `availableNow` y evolución aditiva.
 - Silver tipifica/deduplica y separa **146 válidas + 4 rechazadas**.
 - Gold produce tres agregados; ingreso Silver = Gold = **237,057.40 (PASS)**.
-- Notebooks: `process/salesjson/`; evidencia: `evidence/Medallion/salesjson/`.
+- Notebooks: `process/salesjson/`; [evidencia SalesJSON](evidence/Medallion/salesjson/README_ES.md).
 
 ### SalesCSV — PySpark batch en Job Compute clásico
 
@@ -59,7 +57,7 @@ El diagrama incluye VNets/subnets por ambiente, peering, private endpoints y Pri
 - Bronze/Silver/Gold en single-node DBR 17.3 LTS, Photon, `Standard_D4ds_v4`.
 - Silver hace LEFT JOIN con productos, calcula cambios firmados y separa **496 válidas + 4 rechazadas**.
 - Gold produce inventario por producto, por bodega y bajo stock; unidades, valor y regla de negocio **PASS**.
-- Notebooks: `process/salescsv/`; evidencia: `evidence/Medallion/salescsv/`.
+- Notebooks: `process/salescsv/`; [evidencia SalesCSV](evidence/Medallion/salescsv/README_ES.md).
 
 ### SalesLT — Lakehouse Federation privada
 
@@ -69,9 +67,7 @@ El diagrama incluye VNets/subnets por ambiente, peering, private endpoints y Pri
 - Silver crea clientes, productos y líneas de venta; Gold crea tres modelos analíticos.
 - Ingreso Silver = Gold por producto = Gold mensual = **708,690.07 (PASS)**.
 
-![Reconciliación de Azure SQL Federation a Bronze](evidence/Medallion/saleslt/01_sql_federation_to_bronze_reconciliation.png)
-
-*Las cinco tablas federadas de Azure SQL coinciden con sus snapshots Bronze, demostrando una ingesta completa a través de la conectividad privada.*
+Evidencia directa: [Evidencia SalesLT](evidence/Medallion/saleslt/README_ES.md).
 
 ## Gobierno, seguridad e identidades
 
@@ -84,9 +80,7 @@ El diagrama incluye VNets/subnets por ambiente, peering, private endpoints y Pri
 | Column mask sobre `customer_email` | Se conserva primera letra/dominio y se oculta el resto |
 | Row filter sobre `country` | Solo Costa Rica: **34 filas**, frente a **92** para identidad privilegiada |
 
-![Row filter ABAC aplicado al Data Analyst](evidence/Security/ABAC/05_analyst_country_row_filter_applied.png)
-
-*La consulta ejecutada como Data Analyst devuelve únicamente Costa Rica y 34 clientes, demostrando el efecto real del row filter en lugar de limitarse a mostrar su configuración.*
+Evidencia directa: [Grants de Unity Catalog](evidence/Security/UC_GRANTS/README_ES.md) · [Máscaras y filtros ABAC](evidence/Security/ABAC/README_ES.md).
 
 Separación de identidades:
 
@@ -109,17 +103,13 @@ dev_qa -> PR -> main -> GitHub Actions (Environment prod)
 
 GitHub Actions solicita `id-token: write`, no almacena client secret, usa aprobación del Environment `prod` y despliega desde `main`. Los cuatro Jobs se administran con el Bundle; `Metadata Documentation` ejecuta tres tareas Serverless en paralelo y permanece manual.
 
-![GitHub Actions con despliegue y tres Jobs PROD exitosos](evidence/Automation/GitHubActions/07_prod_deployment_workflow_success.png)
-
-*El workflow protegido completó el validate/deploy del Bundle y los tres Jobs PROD, demostrando una promoción integral y exitosa desde `main`.*
+Evidencia directa: [Bundle, Jobs y metadata](evidence/Automation/Bundles/README_ES.md) · [Promoción PROD con GitHub Actions](evidence/Automation/GitHubActions/README_ES.md).
 
 ## Orquestación ADF
 
 ADF v2 `adf-centralus-prod` ejecuta `pl_databricks_medallion_prod` mediante `ls_databricks_prod`. La Managed Identity del factory y la conexión de control Serverless inician **SalesJSON Medallion**, **SalesCSV Medallion** y **SalesLT Medallion** en paralelo. ADF usa retry `0`; los reintentos se mantienen dentro de los Jobs. El pipeline y los runs correlacionados terminaron en `Succeeded`.
 
-![ADF ejecutando los tres Jobs PROD en paralelo](evidence/Automation/ADF/03_adf_pipeline_success.png)
-
-*Las tres actividades paralelas aparecen exitosas y el pipeline figura como `Succeeded`, confirmando la orquestación de producción de extremo a extremo.*
+Evidencia directa: [Orquestación ADF](evidence/Automation/ADF/README_ES.md).
 
 ## Consumo y valor de negocio
 
@@ -127,25 +117,19 @@ ADF v2 `adf-centralus-prod` ejecuta `pl_databricks_medallion_prod` mediante `ls_
 
 **Sales & Inventory Executive Overview** consume seis tablas Gold PROD por SQL Warehouse como Data Analyst. Presenta ingresos, órdenes, clientes, bajo stock, tendencia mensual, categoría, inventario por bodega y reposición. Query History confirma `Source=PowerBI`; el reporte está publicado en Power BI Service workspace `DBXJR`.
 
-![Dashboard publicado en Power BI Service](evidence/Consumption/PowerBI/03_powerbi_service_published_dashboard.png)
-
-*El reporte publicado demuestra el resultado consumible en Power BI Service con métricas de ventas, inventario y reposición provenientes de Gold PROD.*
+Evidencia directa: [Power BI](evidence/Consumption/PowerBI/README_ES.md).
 
 ### Genie y Microsoft Teams — valor adicional completo
 
 El **Sales & Inventory Analytics Agent** usa ocho tablas Gold, 6 example queries, 2 measures y 1 filtro. Sus instrucciones evitan mezclar workloads o inventar relaciones. Se validaron ingresos SalesLT, inventario por bodega, bajo stock y análisis por país. Data Analyst obtuvo en Teams los mismos tres productos de bajo stock con fuentes gobernadas.
 
-![Genie Agent consumido desde Microsoft Teams](evidence/Consumption/Genie/10_teams_genie_low_stock_query.png)
-
-*Teams devuelve los tres productos bajo el nivel de reposición con fuentes del Genie Agent, demostrando una respuesta gobernada fuera del workspace de Databricks.*
+Evidencia directa: [Genie y Microsoft Teams](evidence/Consumption/Genie/README_ES.md).
 
 ### Databricks App — bonus completo
 
 La UI Streamlit `apps/sales_inventory_assistant/` está desplegada y corriendo en PROD desde `main`. Usa `WorkspaceClient()` y el App Resource `genie-space`; no consulta tablas directamente ni contiene tokens/IDs hardcodeados. Mantiene conversación, ofrece cuatro quick prompts y preguntas libres. Query History muestra su service principal invocando el Agent y el SQL Warehouse. La conversación completa está incluida en `evidence/Consumption/DatabricksApp/`.
 
-![Databricks App respondiendo sobre bajo stock e inventario](evidence/Consumption/DatabricksApp/03_databricks_app_low_stock_and_inventory.png)
-
-*La App en ejecución responde dos preguntas de negocio en una misma sesión, demostrando funcionamiento real sobre el Genie Agent en vez de una pantalla de despliegue/configuración.*
+Evidencia directa: [Databricks App](evidence/Consumption/DatabricksApp/README_ES.md).
 
 ## Características operativas evaluables
 
@@ -191,7 +175,7 @@ La UI Streamlit `apps/sales_inventory_assistant/` está desplegada y corriendo e
 
 Los requisitos centrales están completos y respaldados por código, configuración y evidencia visual. Power BI, Genie, Teams y Databricks App también están completos. La App extiende el proyecto más allá del alcance base sin crear una ruta paralela de datos: reutiliza el Agent, Warehouse, Gold y gobierno existentes.
 
-La colección completa está organizada en [`evidence/`](evidence/README.md); este documento muestra solo las pruebas más representativas.
+La colección completa está organizada en el [índice maestro de evidencias](evidence/README_ES.md); este documento enlaza cada requisito directamente sin duplicar capturas.
 
 ## Referencias técnicas
 

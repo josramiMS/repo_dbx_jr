@@ -41,9 +41,7 @@ The same repository promotes tested code from `dev_qa` to `main`. GitHub Actions
 
 ## Architecture overview
 
-![Azure deployment architecture](evidence/Architecture/01_azure_deployment_architecture.png)
-
-*This diagram proves the deployed separation of DEV and PROD across Databricks, networking, private endpoints, Private DNS, ADLS, and Azure SQL, while showing how GitHub, ADF, Power BI, Teams, and the Databricks App connect to the platform.*
+Evidence: [Azure deployment architecture](evidence/Architecture/README.md).
 
 The design can be read as three cooperating planes:
 
@@ -88,6 +86,8 @@ Managed catalog roots live under `lakehouse/_managed/<catalog>/`. Explicit exter
 - **Gold:** `03_gold_analytics.ipynb` builds `daily_sales_summary`, `category_sales_summary`, and `customer_sales_summary` from Silver only.
 - **Validation:** DEV produced **150 Bronze**, **146 valid Silver**, **4 rejected**, and an exact **237,057.40** Silver-to-Gold revenue reconciliation.
 
+Evidence: [SalesJSON evidence](evidence/Medallion/salesjson/README.md).
+
 ### SalesCSV — batch inventory engineering
 
 `datasets/salescsv/generate_inventory_data.py` creates a 15-row product catalog and 500 inventory movements, including four intentionally invalid records.
@@ -97,6 +97,8 @@ Managed catalog roots live under `lakehouse/_managed/<catalog>/`. Explicit exter
 - **Gold:** `03_gold_analytics.ipynb` builds `inventory_by_product`, `inventory_by_warehouse`, and `low_stock_products`.
 - **Validation:** **496** valid and **4** rejected transactions; product/warehouse totals, inventory value, and the low-stock business rule all **PASS**.
 
+Evidence: [SalesCSV evidence](evidence/Medallion/salescsv/README.md).
+
 ### SalesLT — Azure SQL Federation over private connectivity
 
 The Azure SQL SalesLT source has public network access disabled. Unity Catalog exposes it through Lakehouse Federation. The connection uses `sp-centraulus-azsql`; Serverless Databricks compute reaches the source through a Network Connectivity Configuration (NCC) and an approved private endpoint.
@@ -105,6 +107,8 @@ The Azure SQL SalesLT source has public network access disabled. Unity Catalog e
 - **Silver:** `02_silver_transformation.ipynb` creates clean `customers`, enriched `products`, and joined `sales_order_lines`.
 - **Gold:** `03_gold_analytics.ipynb` produces `sales_by_product`, `sales_by_customer`, and `monthly_sales_summary`.
 - **Validation:** Silver, product Gold, and monthly Gold each reconcile to **708,690.07**.
+
+Evidence: [SalesLT evidence](evidence/Medallion/saleslt/README.md).
 
 All three workloads follow the same notebook contract:
 
@@ -151,6 +155,8 @@ Combining deployer and runtime in `sp-centraulus-dbx-main` is an explicit academ
 
 The controls were manually applied and validated in both environments. The DEV row-filter test returned **34 Costa Rica rows** for the analyst versus **92 total rows** for the privileged identity.
 
+Evidence: [Unity Catalog grants](evidence/Security/UC_GRANTS/README.md) · [ABAC policies](evidence/Security/ABAC/README.md).
+
 ## Networking and private connectivity
 
 The deployment diagram records dedicated DEV and PROD workspace networks and subnets, data/private-endpoint segments, shared-service networking, peering, private DNS zones, and private endpoints for the protected Azure services.
@@ -189,6 +195,8 @@ dev_qa -> Pull Request -> main -> GitHub Actions Environment: prod
 
 The workflow requests `id-token: write`, stores no Databricks client secret, requires the protected `prod` Environment approval, and deploys from `main`. Bundle reconciliation updates the existing resources rather than creating duplicate Jobs.
 
+Evidence: [Bundle and Job deployment](evidence/Automation/Bundles/README.md) · [GitHub Actions PROD promotion](evidence/Automation/GitHubActions/README.md).
+
 ## Azure Data Factory orchestration
 
 ADF v2 `adf-centralus-prod` runs pipeline `pl_databricks_medallion_prod`. Linked service `ls_databricks_prod` uses the factory's system-assigned Managed Identity and a Serverless control connection to start the three Bundle-managed PROD Jobs in parallel:
@@ -201,17 +209,23 @@ ADF pipeline ------+-> SalesCSV Medallion
 
 ADF retry is `0`; workload-specific retries remain inside the Databricks Job definitions. The metadata Job stays manual. The first end-to-end pipeline and all three correlated Databricks runs completed successfully.
 
+Evidence: [ADF orchestration](evidence/Automation/ADF/README.md).
+
 ## Consumption layer
 
 ### Power BI
 
 **Status: COMPLETE.** The published **Sales & Inventory Executive Overview** reads six PROD Gold tables through the Databricks SQL Warehouse as the Data Analyst identity. Its visuals cover total revenue, orders, customers, low-stock products, monthly revenue, revenue by product category, inventory value by warehouse, and replenishment needs. Query History confirms `Source=PowerBI`; the report is published in Power BI Service workspace `DBXJR`.
 
+Evidence: [Power BI evidence](evidence/Consumption/PowerBI/README.md).
+
 ### Databricks Genie and Microsoft Teams
 
 **Status: COMPLETE.** The PROD **Sales & Inventory Analytics Agent** uses eight governed Gold tables through the existing SQL Warehouse. Its instructions choose the correct workload, default to `net_revenue`, avoid fabricated cross-workload joins, and respect Unity Catalog permissions. Semantic tuning includes **6 example queries, 2 measures, and 1 reusable Low Stock filter**.
 
 Validated results include SalesLT revenue **708,690.07**, inventory value by warehouse, three low-stock products, and the highest-spending SalesJSON country. The Data Analyst also queried the same Agent from Microsoft Teams and received the governed low-stock result with sources.
+
+Evidence: [Genie and Microsoft Teams evidence](evidence/Consumption/Genie/README.md).
 
 ### Sales & Inventory Assistant Databricks App — bonus extension
 
@@ -223,6 +237,8 @@ Databricks App -> genie-space App Resource -> Sales & Inventory Analytics Agent
 ~~~
 
 `WorkspaceClient()` uses Databricks Apps managed authentication. The `genie-space` resource injects `GENIE_SPACE_ID`; no workspace URL, Warehouse ID, Agent ID, token, or data credential is hardcoded. The App preserves conversational state, supports four quick prompts and free-form questions, shows final answers and generated SQL, and omits internal reasoning attachments. Deployment History shows the active source on `main`, and Query History confirms the App service principal invoking the Agent/SQL Warehouse.
+
+Evidence: [Databricks App evidence](evidence/Consumption/DatabricksApp/README.md).
 
 ## Operational characteristics
 
@@ -260,53 +276,9 @@ repo_dbx_jr/
 └── README_PROFESSOR_ES.md
 ~~~
 
-## Curated evidence highlights
+## Evidence navigation
 
-The root README intentionally embeds a small review set. The complete numbered collection is under [`evidence/`](evidence/README.md).
-
-### Data engineering outcomes
-
-![SalesCSV Silver-to-Gold reconciliation](evidence/Medallion/salescsv/07_silver_to_gold_reconciliation.png)
-
-*Silver and Gold reconcile to the same 1,814 net units and 241,220.50 inventory value, proving that the inventory aggregations preserve the validated business totals.*
-
-### Security outcome
-
-![ABAC analyst country row filter](evidence/Security/ABAC/05_analyst_country_row_filter_applied.png)
-
-*When the query runs as the analyst, ABAC exposes only the 34 Costa Rica customer rows; the privileged comparison returns all 92 rows and remains in the complete evidence set.*
-
-### Promotion and orchestration
-
-![GitHub Actions PROD success](evidence/Automation/GitHubActions/07_prod_deployment_workflow_success.png)
-
-*The protected GitHub Actions workflow completed Bundle validation/deployment and all three PROD workload runs—SalesCSV, SalesJSON, and SalesLT—in one successful promotion.*
-
-![ADF PROD pipeline success](evidence/Automation/ADF/03_adf_pipeline_success.png)
-
-*ADF shows three parallel Databricks Job activities and a `Succeeded` pipeline run, proving the production orchestrator launched every workload successfully.*
-
-### Governed consumption
-
-![Published Power BI executive overview](evidence/Consumption/PowerBI/03_powerbi_service_published_dashboard.png)
-
-*The executive dashboard is published in the Power BI Service workspace—not only open in Desktop—and exposes revenue, orders, customers, inventory, and replenishment results from PROD Gold.*
-
-![Power BI source in Databricks Query History](evidence/Consumption/PowerBI/01_databricks_query_history_powerbi.png)
-
-*Databricks Query History identifies `Power BI` as the source and `Data Analyst` as the user, proving the published BI path reaches the governed SQL Warehouse.*
-
-![Microsoft Teams Genie low-stock result](evidence/Consumption/Genie/10_teams_genie_low_stock_query.png)
-
-*Microsoft Teams returns the same three governed low-stock products with source references, demonstrating successful use of the Genie Agent outside the Databricks workspace.*
-
-![Databricks App low-stock and inventory conversation](evidence/Consumption/DatabricksApp/03_databricks_app_low_stock_and_inventory.png)
-
-*The running App answers both low-stock and inventory-by-warehouse questions in one session, demonstrating an actual business workflow rather than an App configuration screen.*
-
-![Databricks App service principal in Query History](evidence/Consumption/DatabricksApp/05_databricks_app_query_history_service_principal.png)
-
-*Query History attributes the Agent-generated SQL to the Databricks App service principal, proving that managed App identity—not a personal token—executes the governed requests.*
+All technical screenshots live in the bilingual, phase-specific indexes under [`evidence/`](evidence/README.md). Start with the [master evidence index](evidence/README.md) to review architecture, Medallion processing, security, automation, and consumption in order. Certification images remain below because they are credentials rather than phase evidence.
 
 ## Certifications and credentials
 
