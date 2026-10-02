@@ -6,7 +6,7 @@
 
 This repository implements a governed Azure Databricks lakehouse with separate DEV and PROD resources, Unity Catalog, Microsoft Entra identities, ADLS Gen2 external storage, and a medallion ETL architecture.
 
-The DEV foundation, Unity Catalog grants baseline, ABAC controls, all three ETLs—Sales JSON, Sales CSV, and SalesLT—Bundle automation, and evidence are functionally complete and documented. The PROD foundation, catalogs, grants, manually applied and validated ABAC, GitHub Actions/OIDC deployment, all four Jobs, and Azure Data Factory orchestration are also complete. ADF v2 **adf-centralus-prod** now runs the three operational PROD Jobs in parallel through **pl_databricks_medallion_prod**; the first end-to-end pipeline and all correlated Databricks runs succeeded. Power BI consumption is complete: the published **Sales & Inventory Executive Overview** reads Unity Catalog Gold PROD through the Databricks SQL Warehouse as a Data Analyst. Conversational consumption is also complete: the PROD **Sales & Inventory Analytics Agent** uses the same governed Gold data through the existing SQL Warehouse, and the Data Analyst successfully consumed that agent from the Databricks Genie app in Microsoft Teams. Power BI and Genie now provide complementary dashboard and conversational paths. Remaining work is an optional Databricks App only if pursued, followed by final evidence cleanup and presentation preparation.
+The DEV foundation, Unity Catalog grants baseline, ABAC controls, all three ETLs—Sales JSON, Sales CSV, and SalesLT—Bundle automation, and evidence are functionally complete and documented. The PROD foundation, catalogs, grants, manually applied and validated ABAC, GitHub Actions/OIDC deployment, all four Jobs, and Azure Data Factory orchestration are also complete. ADF v2 **adf-centralus-prod** now runs the three operational PROD Jobs in parallel through **pl_databricks_medallion_prod**; the first end-to-end pipeline and all correlated Databricks runs succeeded. Power BI consumption is complete: the published **Sales & Inventory Executive Overview** reads Unity Catalog Gold PROD through the Databricks SQL Warehouse as a Data Analyst. Conversational consumption is also complete: the PROD **Sales & Inventory Analytics Agent** uses the same governed Gold data through the existing SQL Warehouse, and the Data Analyst successfully consumed that agent from the Databricks Genie app in Microsoft Teams. Power BI and Genie now provide complementary dashboard and conversational paths. The bonus **Sales & Inventory Assistant** Databricks App is implemented in source; Databricks deployment, validation, and evidence are still pending.
 
 Validated Sales JSON outcome:
 
@@ -551,6 +551,10 @@ The Databricks Genie app in Microsoft Teams was connected to the same **Sales & 
 
 The complete, normalized Genie and Teams screenshot set is documented under **evidence/Consumption/Genie/**.
 
+## Bonus Databricks App
+
+**Status: IMPLEMENTED IN SOURCE / PENDING DATABRICKS DEPLOYMENT AND EVIDENCE.** The lightweight Streamlit **Sales & Inventory Assistant** in **apps/sales_inventory_assistant/** provides a custom UI over the same existing Genie Agent. It preserves the Genie conversation in the user session, supports four quick prompts and free-form questions, and displays final response text plus generated SQL when safely available. It uses `WorkspaceClient()` with the `genie-space` App Resource and contains no hardcoded tokens or Databricks resource IDs. The intended path is **Databricks App -> Genie Agent -> SQL Warehouse -> Unity Catalog Gold**. Manual deployment instructions are in the app README, and the future screenshot checklist is under **evidence/Consumption/DatabricksApp/**.
+
 ## Representative evidence
 
 Only representative screenshots are shown here; the complete, normalized evidence set is organized under **evidence/Medallion/**, **evidence/Security/**, **evidence/Automation/**, and **evidence/Consumption/**. See **evidence/README.md** for the short index.
@@ -619,6 +623,7 @@ SalesLT federation and Bronze row counts reconcile across all five source tables
 - Power BI consumption: complete. **Sales & Inventory Executive Overview** is published in Power BI Service and consumes PROD Gold through the Databricks SQL Warehouse as Data Analyst.
 - Databricks Genie consumption: complete. **Sales & Inventory Analytics Agent** uses the existing PROD SQL Warehouse, governed Gold tables, workload-safe instructions, and the curated set of 6 example queries, 2 measures, and 1 filter.
 - Microsoft Teams integration: complete. The Data Analyst connected the Databricks Genie app to the same agent and validated the three-product low-stock response with sources.
+- Bonus Databricks App: **implemented in source / pending Databricks deployment and evidence**. The Streamlit UI reuses the existing Genie Agent through the managed `genie-space` App Resource.
 - This documentation closure is prepared on **dev_qa** without an automatic merge to `main`.
 - Detailed metadata screenshots remain to be captured as evidence, but the PROD deployment and execution are not pending. Run `99_phase_validation` separately only when audit or troubleshooting evidence is needed.
-- Remaining work: optional Databricks App only if pursued, plus final evidence cleanup and presentation preparation.
+- Remaining work: deploy and validate the Databricks App, capture its four evidence screenshots, then finish evidence cleanup and presentation preparation.

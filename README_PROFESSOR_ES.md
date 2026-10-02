@@ -4,7 +4,7 @@
 
 ## Resumen ejecutivo
 
-El proyecto implementa una arquitectura lakehouse gobernada en Azure Databricks. DEV está completo con grants de Unity Catalog, ABAC, los tres ETL, Databricks Bundles y evidencias. La fundación, catálogos, grants y ABAC de PROD también están completos; ABAC PROD se aplicó y validó manualmente. GitHub Actions despliega mediante OIDC sin client secret y con aprobación obligatoria del Environment **prod**. ADF v2 **adf-centralus-prod** ejecuta en paralelo los tres Jobs operativos de PROD mediante **pl_databricks_medallion_prod**; el primer pipeline end-to-end y los runs correlacionados en Databricks terminaron correctamente. El dashboard **Sales & Inventory Executive Overview** consume Gold PROD mediante el SQL Warehouse como Data Analyst y está publicado en Power BI Service. El agente PROD **Sales & Inventory Analytics Agent** usa el mismo Warehouse y gobierno de Unity Catalog; Data Analyst también lo validó desde la aplicación Databricks Genie en Microsoft Teams. Power BI, Genie y Teams están completos como rutas complementarias de dashboard y analítica conversacional. Solo queda una Databricks App opcional si se decide desarrollarla, además del cierre final de evidencias y la presentación.
+El proyecto implementa una arquitectura lakehouse gobernada en Azure Databricks. DEV está completo con grants de Unity Catalog, ABAC, los tres ETL, Databricks Bundles y evidencias. La fundación, catálogos, grants y ABAC de PROD también están completos; ABAC PROD se aplicó y validó manualmente. GitHub Actions despliega mediante OIDC sin client secret y con aprobación obligatoria del Environment **prod**. ADF v2 **adf-centralus-prod** ejecuta en paralelo los tres Jobs operativos de PROD mediante **pl_databricks_medallion_prod**; el primer pipeline end-to-end y los runs correlacionados en Databricks terminaron correctamente. El dashboard **Sales & Inventory Executive Overview** consume Gold PROD mediante el SQL Warehouse como Data Analyst y está publicado en Power BI Service. El agente PROD **Sales & Inventory Analytics Agent** usa el mismo Warehouse y gobierno de Unity Catalog; Data Analyst también lo validó desde la aplicación Databricks Genie en Microsoft Teams. Power BI, Genie y Teams están completos como rutas complementarias de dashboard y analítica conversacional. La Databricks App bonus **Sales & Inventory Assistant** está implementada en source; su despliegue, validación y evidencia aún están pendientes.
 
 ~~~text
 15 JSON files / 150 Bronze rows
@@ -70,6 +70,7 @@ SalesLT: Azure SQL privado -> fc_saleslt_dev -> 5 Bronze snapshots
 | Consumo Power BI | Desktop/Service -> Databricks SQL Warehouse -> Unity Catalog Gold PROD; acceso Data Analyst | `evidence/Consumption/PowerBI/` | Dashboard publicado y Query History validado; COMPLETE |
 | Consumo Databricks Genie | `Sales & Inventory Analytics Agent` -> SQL Warehouse existente -> Gold PROD gobernado | `evidence/Consumption/Genie/` | 6 queries, 2 measures, 1 filter y resultados validados; COMPLETE |
 | Integración Microsoft Teams | Aplicación Databricks Genie conectada al mismo agente; consumidor Data Analyst | Configuración y query low stock en `evidence/Consumption/Genie/` | Respuesta correcta con 3 productos y fuentes; COMPLETE |
+| Databricks App bonus | Streamlit -> mismo Genie Agent -> SQL Warehouse -> Unity Catalog Gold | `apps/sales_inventory_assistant/` + checklist `evidence/Consumption/DatabricksApp/` | Implemented in source; pending Databricks deployment and evidence |
 
 ## Recursos
 
@@ -407,6 +408,10 @@ El tuning incluye **6 example queries**, **2 measures** —**Total SalesLT Net R
 
 La aplicación Databricks Genie en Microsoft Teams quedó conectada al mismo agente. Data Analyst consultó los productos bajo reorder level y recibió correctamente los tres resultados con fuentes. Teams es una superficie externa de consumo; la ejecución, los permisos y el gobierno permanecen en Databricks/Unity Catalog. Junto con Power BI, el proyecto demuestra dos rutas complementarias: dashboard BI y analítica conversacional.
 
+## Databricks App bonus
+
+**Estado: IMPLEMENTED IN SOURCE / PENDING DATABRICKS DEPLOYMENT AND EVIDENCE.** **Sales & Inventory Assistant** es una UI Streamlit pequeña sobre el mismo Genie Agent, no una ruta nueva de acceso directo a datos. Usa `WorkspaceClient()` con autenticación administrada, recibe el Space ID mediante el App Resource `genie-space`, mantiene `conversation_id` por sesión y presenta únicamente la respuesta final y el SQL generado disponible. El source, las instrucciones manuales de despliegue y el checklist de evidencia están versionados, pero todavía no constituyen evidencia de una App ejecutándose en Databricks.
+
 ## Estado de la entrega
 
 - DEV completo: fundación, Unity Catalog grants, ABAC, tres ETL, metadata/validación, evidencia y Bundle con operational hardening.
@@ -415,6 +420,7 @@ La aplicación Databricks Genie en Microsoft Teams quedó conectada al mismo age
 - Consumo Power BI completo: dashboard publicado y acceso a Gold PROD validado mediante el SQL Warehouse con Data Analyst.
 - Consumo Databricks Genie completo: agente PROD sobre Gold gobernado, instrucciones semánticas, 6 queries, 2 measures, 1 filter y resultados validados.
 - Integración Microsoft Teams completa: Data Analyst conectado al mismo agente y query low stock validada con tres productos y fuentes.
+- Databricks App bonus: **implemented in source / pending Databricks deployment and evidence**; reutiliza el Genie Agent mediante `genie-space`.
 - El cierre documental se prepara en **dev_qa** y no se hace merge automático a **main**.
 - Faltan capturas detalladas de metadata como evidencia, no su despliegue ni ejecución. Los notebooks 99 se ejecutan por separado solo cuando se necesiten para auditoría o troubleshooting.
-- Trabajo restante: Databricks App opcional solo si se decide desarrollarla, más cierre final de evidencias y preparación de la presentación.
+- Trabajo restante: desplegar y validar la Databricks App, capturar sus cuatro evidencias y completar el cierre final de evidencias y la presentación.
