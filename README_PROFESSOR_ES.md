@@ -1,426 +1,187 @@
-# Guía Concisa de Evaluación — Proyecto Databricks
+# Guía de evaluación — Proyecto Lakehouse en Azure Databricks
 
-[README técnico en inglés](README.md) | [Documentación completa en español](README_ES.md)
+[README completo en español](README_ES.md) · [English version](README.md) · [Índice de evidencias](evidence/README.md)
 
-## Resumen ejecutivo
+**Estado de la entrega: COMPLETO.** El proyecto implementa y demuestra un lakehouse gobernado con separación DEV/PROD, tres pipelines Medallion, seguridad en Unity Catalog, automatización, despliegue PROD, orquestación ADF y múltiples canales de consumo. La Databricks App es una extensión bonus adicional al alcance principal.
 
-El proyecto implementa una arquitectura lakehouse gobernada en Azure Databricks. DEV está completo con grants de Unity Catalog, ABAC, los tres ETL, Databricks Bundles y evidencias. La fundación, catálogos, grants y ABAC de PROD también están completos; ABAC PROD se aplicó y validó manualmente. GitHub Actions despliega mediante OIDC sin client secret y con aprobación obligatoria del Environment **prod**. ADF v2 **adf-centralus-prod** ejecuta en paralelo los tres Jobs operativos de PROD mediante **pl_databricks_medallion_prod**; el primer pipeline end-to-end y los runs correlacionados en Databricks terminaron correctamente. El dashboard **Sales & Inventory Executive Overview** consume Gold PROD mediante el SQL Warehouse como Data Analyst y está publicado en Power BI Service. El agente PROD **Sales & Inventory Analytics Agent** usa el mismo Warehouse y gobierno de Unity Catalog; Data Analyst también lo validó desde la aplicación Databricks Genie en Microsoft Teams. Power BI, Genie y Teams están completos como rutas complementarias de dashboard y analítica conversacional. La Databricks App bonus **Sales & Inventory Assistant** está implementada en source; su despliegue, validación y evidencia aún están pendientes.
+## Resumen para evaluación
 
-~~~text
-15 JSON files / 150 Bronze rows
-                 |
-                 v
-146 valid Silver rows + 4 rejected rows
-                 |
-                 v
-3 external Gold Delta tables
-                 |
-                 v
-Silver revenue 237057.40 = Gold revenue 237057.40 (PASS)
-~~~
+| Área | Evidencia de cumplimiento | Clasificación |
+|---|---|---|
+| Arquitectura Azure DEV/PROD | Workspaces, ADLS, Access Connectors, redes, private endpoints, Private DNS y recursos por ambiente | **Requisito principal — completo** |
+| Ingesta y Medallion | SalesJSON, SalesCSV y SalesLT con Bronze/Silver/Gold, calidad y reconciliación | **Requisito principal — completo** |
+| Gobierno y seguridad | Unity Catalog, external locations, grupos/SPs, mínimo privilegio y ABAC | **Requisito principal — completo** |
+| Automatización | Bundle `dbx-medallion-automation`, Jobs, reintentos, GitHub Actions y OIDC | **Requisito principal — completo** |
+| Producción | Promoción `dev_qa -> PR -> main`, validate/deploy y ejecuciones PROD exitosas | **Requisito principal — completo** |
+| Orquestación | ADF v2 ejecuta los tres Jobs PROD en paralelo con Managed Identity | **Requisito principal — completo** |
+| BI | Dashboard ejecutivo publicado en Power BI Service desde Gold PROD | **Requisito principal — completo** |
+| Analítica conversacional | Genie Agent gobernado y consumo desde Microsoft Teams | **Valor adicional — completo** |
+| Aplicación de datos | Streamlit Databricks App sobre el Genie Agent, desplegada en PROD desde `main` | **Bonus — completo** |
 
-~~~text
-Sales CSV: 15 productos + 500 transacciones Bronze
-           -> 496 válidas + 4 rechazadas Silver
-           -> 3 modelos Gold
-           -> unit/value/low-stock validations: PASS
-~~~
+## Arquitectura y separación de ambientes
 
-~~~text
-SalesLT: Azure SQL privado -> fc_saleslt_dev -> 5 Bronze snapshots
-         -> 847 customers + 295 products + 542 sales lines en Silver
-         -> 3 modelos Gold
-         -> 708690.07 = 708690.07 = 708690.07: PASS
-~~~
+![Arquitectura Azure del proyecto](evidence/Architecture/01_azure_deployment_architecture.png)
 
-## Mapa rápido de evaluación
-
-| Criterio | Implementación | Evidencia | Estado |
-|---|---|---|---|
-| DEV/PROD separados | Workspaces, storages y Access Connectors separados | **00_environment_setup.ipynb** | Fundaciones DEV y PROD completas |
-| Managed Identity | Access Connectors y Storage Credentials | External Locations landing/lakehouse/streaming | DEV y PROD completos |
-| Unity Catalog | Catálogos por workload; schemas bronze/silver/gold | Notebook de ambiente | Catálogos y grants DEV/PROD completos |
-| Control de acceso | Developers R/W/Create en DEV; Analysts solo Gold; ETL SP mínimo | **00_unity_catalog_grants.ipynb** | Validado con SHOW GRANTS |
-| ABAC: column mask | Governed tag **data_classification** sobre SalesLT Gold según ambiente | **01_abac_policies** + **evidence/Security/ABAC/** | Validado en DEV y aplicado/validado manualmente en PROD |
-| ABAC: row filter | Governed tag **data_classification** sobre SalesJSON Gold según ambiente | **01_abac_policies** + **evidence/Security/ABAC/** | Validado en DEV y aplicado/validado manualmente en PROD |
-| Dataset incremental | 15 archivos NDJSON | **datasets/salesjson/** | Completo |
-| Auto Loader | cloudFiles, Managed File Events, availableNow | Notebook Bronze | Validado |
-| Checkpoint/schema | Rutas separadas en streaming | Notebook y evidencia | Validado |
-| Schema evolution | shipping_priority; addNewColumns + mergeSchema | Evidencia | Validado en DEV; PROD admite el schema base actual |
-| Calidad Silver | Casts, reglas y rejected_orders | Notebook Silver | 146 válidos / 4 rechazados |
-| Idempotencia | Delta MERGE por order_id y timestamp | Notebook Silver | Implementado |
-| Gold | Resúmenes daily/category/customer | Notebook Gold | Completo |
-| Reconciliación | Silver net_amount contra Gold net_revenue | Notebook Validation | PASS |
-| CSV Bronze | PySpark batch, header=true, inferSchema=true, external Delta, idempotent MERGE | Notebook y external tables evidence | 15 productos / 500 transacciones |
-| CSV Silver | explicit casting, try_cast, LEFT JOIN, data-quality rules y rejected_transactions | Notebook y rejected records evidence | 496 válidos / 4 rechazados |
-| CSV Gold | inventory_by_product, inventory_by_warehouse y low_stock_products | Notebooks y Gold table evidence | Completo |
-| CSV reconciliación | Units, inventory value y low-stock business rule | Notebook Validation y evidence/Medallion/salescsv/ | PASS |
-| CSV metadata | Table/column comments en inglés | 98_metadata_documentation.ipynb | Completo |
-| SalesLT conectividad | Azure SQL con public access disabled; Foreign Catalog **fc_saleslt_dev**; SP **sp-centraulus-azsql**; NCC + Private Endpoint; Serverless | Configuración ejecutada y evidencias del ETL | Validado en DEV |
-| SalesLT Bronze | Snapshot replication de 5 tablas federadas a external Delta | 01_bronze_ingestion + reconciliación SQL/Bronze | 5/5 PASS |
-| SalesLT Silver | customers/products/sales_order_lines; joins y moneda a 2 decimales | 02_silver_transformation + evidencia de join | 847 / 295 / 542 |
-| SalesLT Gold | sales_by_product, sales_by_customer, monthly_sales_summary; aggregations y ranking | 03_gold_analytics + outputs | Completo |
-| SalesLT reconciliación | Silver, Product Gold y Monthly Gold | 99_phase_validation + evidence/Medallion/saleslt/ | 708690.07 en las 3 capas; PASS |
-| CI/CD | `deploy-prod.yml`; GitHub OIDC sin client secret; Environment `prod` con Required Reviewer | GitHub Actions + `evidence/Automation/GitHubActions/` | PROD exitoso |
-| Jobs PROD | Tres ETL operativos más Metadata Documentation; sin triggers PROD | Jobs overview y workflow completo | 4/4 desplegados; los cuatro con ejecución exitosa |
-| Seguridad de parámetros | Widgets de ambiente con default vacío y validación exacta `dev`/`prod` | 18 notebooks parametrizados | Ejecución manual sin fallback silencioso a DEV |
-| Metadata PROD | Job `metadata_documentation`, tres tareas Serverless paralelas, manual, sin trigger y `run_as` del SP | `resources/metadata.job.yml` + `evidence/Automation/Metadata/README.md` | Desplegado y ejecutado con `environment=prod` |
-| Orquestación ADF PROD | ADF v2 `adf-centralus-prod`; pipeline `pl_databricks_medallion_prod`; linked service `ls_databricks_prod` con System-assigned Managed Identity | `evidence/Automation/ADF/` | 3 Jobs en paralelo y pipeline SUCCESS |
-| Separación de identidades ADF | ADF tiene `CAN MANAGE RUN` en 3 Jobs; sin grants UC/ADLS. Jobs conservan `run_as=sp-centraulus-dbx-main` | Bundle + permisos de Jobs + evidencia ADF | Validado |
-| Consumo Power BI | Desktop/Service -> Databricks SQL Warehouse -> Unity Catalog Gold PROD; acceso Data Analyst | `evidence/Consumption/PowerBI/` | Dashboard publicado y Query History validado; COMPLETE |
-| Consumo Databricks Genie | `Sales & Inventory Analytics Agent` -> SQL Warehouse existente -> Gold PROD gobernado | `evidence/Consumption/Genie/` | 6 queries, 2 measures, 1 filter y resultados validados; COMPLETE |
-| Integración Microsoft Teams | Aplicación Databricks Genie conectada al mismo agente; consumidor Data Analyst | Configuración y query low stock en `evidence/Consumption/Genie/` | Respuesta correcta con 3 productos y fuentes; COMPLETE |
-| Databricks App bonus | Streamlit -> mismo Genie Agent -> SQL Warehouse -> Unity Catalog Gold | `apps/sales_inventory_assistant/` + checklist `evidence/Consumption/DatabricksApp/` | Implemented in source; pending Databricks deployment and evidence |
-
-## Recursos
+*El diagrama muestra la separación de workspaces, redes, datos, private endpoints, DNS, Azure SQL, ADF y servicios compartidos.*
 
 | Recurso | DEV | PROD |
 |---|---|---|
-| Workspace | **dbw-centralus-dev01** | **dbw-centralus-prod01** |
-| Storage | **stcentralusjrdev** | **stcentralusjrprod** |
-| Access Connector | **dbac-centralus-dbx-dev** | **dbac-centralus-dbx-prod** |
-| Orquestador superior | No configurado | ADF v2 **adf-centralus-prod** |
-| Storage Credential | **dbac_centralus_dbx_dev** | **dbac_centralus_dbx_prod** |
-| Catálogos | saleslt_dev, salesjson_dev, salescsv_dev | saleslt_prod, salesjson_prod, salescsv_prod |
-| External Locations | ext_landing_dev, ext_lakehouse_dev, ext_streaming_dev | ext_landing_prod, ext_lakehouse_prod, ext_streaming_prod |
+| Databricks | `dbw-centralus-dev01` | `dbw-centralus-prod01` |
+| ADLS Gen2 | `stcentralusjrdev` | `stcentralusjrprod` |
+| Access Connector | `dbac-centralus-dbx-dev` | `dbac-centralus-dbx-prod` |
+| Storage credential | `dbac_centralus_dbx_dev` | `dbac_centralus_dbx_prod` |
+| External locations | `ext_landing_dev`, `ext_lakehouse_dev`, `ext_streaming_dev` | `ext_landing_prod`, `ext_lakehouse_prod`, `ext_streaming_prod` |
+| Catálogos | `salesjson_dev`, `salescsv_dev`, `saleslt_dev` | `salesjson_prod`, `salescsv_prod`, `saleslt_prod` |
+| Catálogo federado SalesLT | `fc_saleslt_dev` | `fc_saleslt_prod` |
+| Orquestador superior | — | `adf-centralus-prod` |
+
+La arquitectura separa responsabilidades en tres planos:
+
+- **Control:** GitHub/OIDC despliega recursos versionados; ADF inicia los Jobs mediante su Managed Identity.
+- **Datos y gobierno:** Databricks transforma ADLS y Azure SQL a Delta Bronze/Silver/Gold bajo Unity Catalog.
+- **Consumo:** SQL Warehouse sirve Gold a Power BI y Genie; Teams y la Databricks App reutilizan el mismo Agent gobernado.
+
+El diagrama incluye VNets/subnets por ambiente, peering, private endpoints y Private DNS. ADLS usa endpoints privados `dfs`/`blob`; Azure SQL tiene acceso público deshabilitado y SalesLT usa NCC/private endpoint desde Serverless. Alcance de red y autorización de datos se controlan por separado.
+
+## Implementación de datos
+
+### SalesJSON — Auto Loader y evolución de esquema
+
+- Fuente reproducible: 15 archivos JSON, 150 órdenes.
+- Bronze Serverless con Auto Loader, Managed File Events, checkpoints, metadata de archivo, `_rescued_data`, `availableNow` y evolución aditiva.
+- Silver tipifica/deduplica y separa **146 válidas + 4 rechazadas**.
+- Gold produce tres agregados; ingreso Silver = Gold = **237,057.40 (PASS)**.
+- Notebooks: `process/salesjson/`; evidencia: `evidence/Medallion/salesjson/`.
+
+### SalesCSV — PySpark batch en Job Compute clásico
+
+- Fuente reproducible: 15 productos + 500 movimientos.
+- Bronze/Silver/Gold en single-node DBR 17.3 LTS, Photon, `Standard_D4ds_v4`.
+- Silver hace LEFT JOIN con productos, calcula cambios firmados y separa **496 válidas + 4 rechazadas**.
+- Gold produce inventario por producto, por bodega y bajo stock; unidades, valor y regla de negocio **PASS**.
+- Notebooks: `process/salescsv/`; evidencia: `evidence/Medallion/salescsv/`.
+
+### SalesLT — Lakehouse Federation privada
+
+- Fuente Azure SQL con acceso público deshabilitado.
+- Conexión federada mediante `sp-centraulus-azsql`; acceso Serverless por NCC/private endpoint.
+- Bronze materializa snapshots Delta de cinco tablas; todos los conteos federación-Bronze coinciden.
+- Silver crea clientes, productos y líneas de venta; Gold crea tres modelos analíticos.
+- Ingreso Silver = Gold por producto = Gold mensual = **708,690.07 (PASS)**.
+
+![Reconciliación de Azure SQL Federation a Bronze](evidence/Medallion/saleslt/01_sql_federation_to_bronze_reconciliation.png)
+
+## Gobierno, seguridad e identidades
+
+`security/00_unity_catalog_grants.ipynb` implementa el baseline: developers trabajan en DEV, analysts consultan solo Gold y el service principal ETL opera las capas necesarias sin ownership de catálogos ni acceso directo al storage credential. Developers no tienen acceso directo a PROD.
+
+`security/01_abac_policies.ipynb` demuestra controles a nivel de dato mediante governed tags:
+
+| Control | Resultado para analyst |
+|---|---|
+| Column mask sobre `customer_email` | Se conserva primera letra/dominio y se oculta el resto |
+| Row filter sobre `country` | Solo Costa Rica: **34 filas**, frente a **92** para identidad privilegiada |
+
+![Máscara ABAC visible para Data Analyst](evidence/Security/ABAC/02_analyst_masked_customer_email.png)
+
+Separación de identidades:
+
+- Access Connectors: acceso ADLS detrás de Unity Catalog.
+- `sp-centraulus-azsql`: autenticación de la fuente Azure SQL.
+- `sp-centraulus-dbx-main`: `run_as` de Jobs y deployer OIDC en este alcance académico.
+- Managed Identity de ADF: únicamente `CAN MANAGE RUN`; sin grants UC/ADLS.
+- Data Analyst: consumo Gold por SQL Warehouse.
+- Service principal de la App: `CAN RUN` sobre el Agent y mínimo acceso subyacente requerido.
+
+## Automatización, promoción y PROD
+
+El Bundle define tres Jobs operativos Bronze -> Silver -> Gold y un Job manual de metadata. Los reintentos viven en cada tarea y son seguros por checkpoint o MERGE idempotente. Los triggers DEV fueron probados y quedaron pausados; PROD queda bajo ADF.
 
 ~~~text
-landing     -> archivos fuente
-lakehouse   -> tablas Delta externas y managed roots
-streaming   -> schemas y checkpoints de Auto Loader
+dev_qa -> PR -> main -> GitHub Actions (Environment prod)
+       -> OIDC -> validate -> deploy -> summary
+       -> SalesCSV / SalesJSON / SalesLT PROD
 ~~~
 
-Los Access Connectors usan Managed Identity. Los nombres técnicos y comentarios de Unity Catalog se mantienen en inglés.
+GitHub Actions solicita `id-token: write`, no almacena client secret, usa aprobación del Environment `prod` y despliega desde `main`. Los cuatro Jobs se administran con el Bundle; `Metadata Documentation` ejecuta tres tareas Serverless en paralelo y permanece manual.
 
-## Seguridad
+![GitHub Actions con despliegue y tres Jobs PROD exitosos](evidence/Automation/GitHubActions/07_prod_deployment_workflow_success.png)
 
-| Principal | Acceso |
-|---|---|
-| **admins** | Administración y ownership. |
-| **grp-dbx-developers** | DEV: USE, CREATE TABLE, SELECT, MODIFY y External Locations requeridas. PROD: sin acceso directo. |
-| **grp-dbx-analysts** | USE y SELECT únicamente en Gold. |
-| **sp-centraulus-dbx-main** | `run_as` de los Jobs DEV/PROD y, en este proyecto académico, deploy identity de GitHub OIDC para PROD; no usa client secret almacenado. |
-| **sp-centraulus-azsql** | Identidad de la conexión federada Azure SQL / SalesLT en DEV. |
-| Managed Identity system-assigned de **adf-centralus-prod** | Solo control de ejecución: `CAN MANAGE RUN` sobre los tres Jobs PROD; sin acceso de data plane en Unity Catalog ni ADLS. |
+## Orquestación ADF
 
-El ETL SP no recibe CREATE CATALOG, CREATE SCHEMA, MANAGE, OWNERSHIP ni acceso directo al Storage Credential.
+ADF v2 `adf-centralus-prod` ejecuta `pl_databricks_medallion_prod` mediante `ls_databricks_prod`. La Managed Identity del factory y la conexión de control Serverless inician **SalesJSON Medallion**, **SalesCSV Medallion** y **SalesLT Medallion** en paralelo. ADF usa retry `0`; los reintentos se mantienen dentro de los Jobs. El pipeline y los runs correlacionados terminaron en `Succeeded`.
 
-En PROD, developers no reciben grants; analysts consumen únicamente Gold y el Service Principal del ETL ejecuta las cargas.
+![ADF ejecutando los tres Jobs PROD en paralelo](evidence/Automation/ADF/03_adf_pipeline_success.png)
 
-### ABAC validado en DEV y PROD
+## Consumo y valor de negocio
 
-El baseline de grants se conserva en **security/00_unity_catalog_grants.ipynb**. La tarea de notebook **security/01_abac_policies.py**, versionada en el repositorio como **security/01_abac_policies.ipynb**, implementa dos políticas controladas por el governed tag **data_classification**:
+### Power BI — completo
 
-| Política | Resultado observado |
-|---|---|
-| Column mask en **saleslt_dev.gold.sales_by_customer.customer_email** para **grp-dbx-analysts** | Admin/developer ve el email normal; analyst lo ve enmascarado. |
-| Row filter en **salesjson_dev.gold.customer_sales_summary.country** para **grp-dbx-analysts** | Admin ve Costa Rica **34**, United States **24**, Mexico **19** y Colombia **15**: **92 total**. Analyst ve solo Costa Rica: **34**. |
-
-Las evidencias de grants y ABAC están separadas en **evidence/Security/UC_GRANTS/** y **evidence/Security/ABAC/**. Security DEV queda completada con grants + ABAC. La misma definición portable se aplicó y validó manualmente en PROD sin conceder acceso interactivo a developers.
-
-## ETL Sales JSON
-
-Las cifras y evidencias de **shipping_priority** de esta sección corresponden a DEV. El dataset actual de PROD contiene solo los cinco archivos JSON con schema base, por lo que puede operar sin esa columna.
-
-Bronze:
-
-- Auto Loader + Structured Streaming sobre **landing/salesjson/incoming/**.
-- ADLS mediante Managed Identity y ejecución Serverless a través del NCC configurado.
-- Managed File Events, schema location, checkpoint, rescued data y file metadata.
-- addNewColumns, Delta mergeSchema y availableNow=True.
-- Target externo **salesjson_dev.bronze.orders_raw**.
-
-Silver:
-
-- Targets **silver.orders** y **silver.rejected_orders**.
-- Normalización, casts, métricas gross/discount/net y reglas de calidad.
-- Deduplicación por order_id.
-- Delta MERGE con schema evolution e idempotencia por ingestion timestamp.
-
-Gold:
-
-| Tabla | Filas | Uso |
-|---|---:|---|
-| **daily_sales_summary** | **20** | Serie temporal y métricas de ventas. |
-| **category_sales_summary** | **3** | Rendimiento por categoría. |
-| **customer_sales_summary** | **92** | Actividad y valor por cliente/país. |
-
-Las tablas Gold son Delta externas, leen solo desde Silver y usan snapshot-style MERGE.
-
-## ETL Sales CSV
-
-Fuente:
-
-- ADLS Gen2 mediante Managed Identity.
-- **product_catalog.csv**: 15 registros.
-- **inventory_transactions.csv**: 500 registros.
-
-Bronze:
-
-- PySpark batch con **header=true** e **inferSchema=true**.
-- Targets externos **product_catalog_raw** e **inventory_transactions_raw**.
-- Idempotent Delta MERGE.
-
-Silver:
-
-- explicit casting, **try_cast** y **LEFT JOIN** con product catalog.
-- Data-quality rules: **496 válidos / 4 rechazados**.
-- Métricas **inventory_change** e **inventory_value_change**.
-- Delta MERGE y cuarentena en **rejected_transactions**.
-
-Gold:
-
-- **inventory_by_product**, **inventory_by_warehouse** y **low_stock_products**.
-- **GROUP BY**, **COUNT DISTINCT**, **SUM**, **AVG**, **MIN** y **MAX**.
-- Business filtering y snapshot MERGE.
-
-Metadata y validación:
-
-- **process/salescsv/98_metadata_documentation.ipynb** documenta en inglés tables y columns para consumo técnico y Genie.
-- **process/salescsv/99_phase_validation.ipynb** confirma unit reconciliation, inventory value reconciliation y low-stock business rule: **PASS**.
-
-## ETL SalesLT
-
-Conectividad y ejecución:
-
-- Azure SQL con public access disabled.
-- Lakehouse Federation Foreign Catalog **fc_saleslt_dev**.
-- Connection autenticada con **sp-centraulus-azsql**.
-- Conectividad privada mediante NCC + Private Endpoint.
-- Ejecución en Databricks Serverless compute.
-
-Bronze:
-
-- Snapshot replication a cinco tablas Delta externas.
-- Reconciliación fuente/Bronze: Customer **847**, Product **295**, ProductCategory **41**, SalesOrderHeader **32**, SalesOrderDetail **542**; todas **PASS**.
-
-Silver:
-
-- **customers** (**847**), **products** (**295**) y **sales_order_lines** (**542**).
-- Joins entre headers, details, customers, products y categories.
-- Normalización y monetary precision a dos decimales para analytics.
-
-Gold:
-
-- **sales_by_product**, con aggregations y revenue ranking.
-- **sales_by_customer**, con actividad, productos y gasto.
-- **monthly_sales_summary**, con métricas mensuales.
-- Reconciliación: Silver **708690.07** = Product Gold **708690.07** = Monthly Gold **708690.07**: **PASS**.
-
-Metadata y validación:
-
-- **process/saleslt/98_metadata_documentation.ipynb** documenta tables y columns.
-- **process/saleslt/99_phase_validation.ipynb** valida snapshots, Silver, Gold y reconciliación.
-
-## Patrón común de los tres ETL
-
-~~~text
-01_bronze_ingestion.py
-02_silver_transformation.py
-03_gold_analytics.py
-98_metadata_documentation.py
-99_phase_validation.py
-~~~
-
-En el repositorio se conservan como notebooks **.ipynb** bajo **process/salesjson/**, **process/salescsv/** y **process/saleslt/**.
-
-## Evidencias
-
-Carpeta: **evidence/Medallion/salesjson/**
-
-- Bronze 150, Silver válido 146 y rechazado 4.
-- Source files y checkpoint de Auto Loader.
-- Schema evolution con shipping_priority en DEV; PROD admite el schema base actual de cinco archivos.
-- Cuatro reglas de rechazo, una fila por regla.
-- Resultados de las tres tablas Gold.
-- Silver 237057.40 = Gold 237057.40: PASS.
-
-Carpeta: **evidence/Medallion/salescsv/**
-
-- Product Bronze 15 e Inventory Bronze 500.
-- Silver válido 496 y rechazado 4.
-- Join enrichment y external Delta tables.
-- Gold product 15, Gold warehouse 3 y salida low stock.
-- Unit reconciliation, inventory value reconciliation y low-stock business rule: PASS.
-
-Carpeta: **evidence/Medallion/saleslt/**
-
-- Conteos Azure SQL Federation contra Bronze para las cinco tablas: PASS.
-- Silver summary y evidencia de joins.
-- Outputs de **sales_by_product**, **sales_by_customer** y **monthly_sales_summary**.
-- Reconciliación 708690.07 en Silver, Product Gold y Monthly Gold: PASS.
-
-Seguridad:
-
-- **evidence/Security/UC_GRANTS/**: baseline de permisos y External Locations.
-- **evidence/Security/ABAC/**: configuración de policies, email con/sin mask y row filter con admin/developer versus analyst.
-
-Automatización:
-
-- **evidence/Automation/Bundles/**: validación, deploy, summary, retries y triggers `PAUSED` de DEV.
-- **evidence/Automation/GitHubActions/**: protección del Environment `prod`, CI/CD exitoso, despliegue en workspace y Jobs PROD.
-- **evidence/Automation/Metadata/**: estado confirmado del Job manual de metadata y checklist de capturas detalladas que faltan por recopilar.
-- **evidence/Automation/ADF/**: pipeline PROD exitoso y runs correspondientes verificados en Databricks.
-
-Consumo:
-
-- **evidence/Consumption/PowerBI/**: Query History con `Source=PowerBI` y `User=Data Analyst`, dashboard terminado en Desktop y reporte publicado en el workspace **DBXJR** de Power BI Service.
-- **evidence/Consumption/Genie/**: overview, fuentes, instrucciones, 6 example queries, 2 measures, 1 filter, resultados validados y consumo correcto desde Microsoft Teams.
-
-Solo se muestran capturas representativas; el resto del conjunto normalizado está organizado bajo **evidence/Medallion/**, **evidence/Security/**, **evidence/Automation/** y **evidence/Consumption/**. El índice corto está en **evidence/README.md**.
-
-Query History de Databricks confirma solicitudes de Power BI mediante el SQL Warehouse PROD como Data Analyst:
-
-![Query History de Databricks para Power BI](evidence/Consumption/PowerBI/01_databricks_query_history_powerbi.png)
-
-Dashboard terminado en Power BI Desktop:
-
-![Dashboard en Power BI Desktop](evidence/Consumption/PowerBI/02_powerbi_desktop_dashboard.png)
-
-Reporte publicado en el workspace DBXJR de Power BI Service:
+**Sales & Inventory Executive Overview** consume seis tablas Gold PROD por SQL Warehouse como Data Analyst. Presenta ingresos, órdenes, clientes, bajo stock, tendencia mensual, categoría, inventario por bodega y reposición. Query History confirma `Source=PowerBI`; el reporte está publicado en Power BI Service workspace `DBXJR`.
 
 ![Dashboard publicado en Power BI Service](evidence/Consumption/PowerBI/03_powerbi_service_published_dashboard.png)
 
-El overview del Genie Agent PROD delimita sus capacidades de ventas e inventario:
+### Genie y Microsoft Teams — valor adicional completo
 
-![Resumen del agente de analítica de ventas e inventario](evidence/Consumption/Genie/01_genie_agent_overview.png)
+El **Sales & Inventory Analytics Agent** usa ocho tablas Gold, 6 example queries, 2 measures y 1 filtro. Sus instrucciones evitan mezclar workloads o inventar relaciones. Se validaron ingresos SalesLT, inventario por bodega, bajo stock y análisis por país. Data Analyst obtuvo en Teams los mismos tres productos de bajo stock con fuentes gobernadas.
 
-El tuning curado reúne seis queries, dos measures y el filtro Low Stock:
+![Genie Agent consumido desde Microsoft Teams](evidence/Consumption/Genie/10_teams_genie_low_stock_query.png)
 
-![Queries measures y filtro configurados en Genie](evidence/Consumption/Genie/04_genie_agent_examples.png)
+### Databricks App — bonus completo
 
-Genie genera el desglose de inventory value por warehouse desde Gold PROD:
+La UI Streamlit `apps/sales_inventory_assistant/` está desplegada y corriendo en PROD desde `main`. Usa `WorkspaceClient()` y el App Resource `genie-space`; no consulta tablas directamente ni contiene tokens/IDs hardcodeados. Mantiene conversación, ofrece cuatro quick prompts y preguntas libres. Query History muestra su service principal invocando el Agent y el SQL Warehouse. La conversación completa está incluida en `evidence/Consumption/DatabricksApp/`.
 
-![Resultado de inventory value por warehouse en Genie](evidence/Consumption/Genie/06_genie_inventory_value_by_warehouse.png)
+![App PROD activa y desplegada desde main](evidence/Consumption/DatabricksApp/07_databricks_app_prod_deployment_main.png)
 
-Microsoft Teams devuelve a Data Analyst los tres productos bajo reorder level con fuentes:
+## Características operativas evaluables
 
-![Consulta de low stock en Microsoft Teams con Genie](evidence/Consumption/Genie/10_teams_genie_low_stock_query.png)
+| Característica | Implementación |
+|---|---|
+| Idempotencia | Delta MERGE en cargas batch/snapshots/agregados; checkpoint en Auto Loader |
+| Calidad | Cuarentena con `rejection_reason`; reconciliaciones Bronze/Silver/Gold |
+| Evolución | `addNewColumns`, `mergeSchema`, schema state y `_rescued_data` |
+| Reintentos | Políticas explícitas por tarea con `retry_on_timeout` |
+| Metadata | Notebooks `98_` mediante Job manual separado |
+| Validación | Notebooks `99_` para auditoría, fuera de la ruta operativa |
+| Seguridad de parámetros | `environment=dev|prod` obligatorio y pasado por target |
+| Trazabilidad | PR, workflow, Jobs, ADF, Query History y capturas numeradas |
 
-Despliegue PROD exitoso en GitHub Actions:
+## Navegación del repositorio
 
-![Despliegue PROD exitoso en GitHub Actions](evidence/Automation/GitHubActions/07_prod_deployment_workflow_success.png)
+| Ruta | Contenido |
+|---|---|
+| `prepenv/` | Bootstrap de ambientes, storage, catálogos y ubicaciones |
+| `process/<workload>/` | Bronze, Silver, Gold, metadata y validación |
+| `security/` | Grants de Unity Catalog y políticas ABAC |
+| `resources/` + `databricks.yml` | Definiciones del Bundle y Jobs |
+| `.github/workflows/` | Promoción/despliegue PROD con OIDC |
+| `apps/sales_inventory_assistant/` | Aplicación Streamlit bonus |
+| `evidence/` | Evidencia completa por arquitectura, seguridad, automatización, Medallion y consumo |
+| `certs/` | Evidencia de certificaciones Microsoft |
 
-Pipeline ADF con los tres Jobs paralelos en estado exitoso:
+## Certificaciones
 
-![Orquestación ADF exitosa](evidence/Automation/ADF/03_adf_pipeline_success.png)
+### Microsoft Certified: Azure Data Fundamentals
 
-Los cuatro Jobs PROD administrados por el Bundle:
+![Microsoft Certified Azure Data Fundamentals](certs/01_microsoft_certified_azure_data_fundamentals.png)
 
-![Resumen de Jobs PROD en Databricks](evidence/Automation/GitHubActions/09_prod_jobs_overview.png)
+### Microsoft Certified: Azure Databricks Data Engineer Associate
 
-Email enmascarado para la identidad analyst mediante ABAC:
+![Microsoft Certified Azure Databricks Data Engineer Associate](certs/02_microsoft_certified_azure_databricks_data_engineer_associate.png)
 
-![Email enmascarado por ABAC para analyst](evidence/Security/ABAC/02_analyst_masked_customer_email.png)
+[Validar la credencial Azure Databricks en Microsoft Learn](https://learn.microsoft.com/en-us/users/joseramirezperez-8751/credentials/certification/implementing-data-engineering-solutions-using-azure-databricks?tab=credentials-tab).
 
-Row filter de país aplicado a la identidad analyst:
+## Conclusión de evaluación
 
-![Row filter de país aplicado por ABAC](evidence/Security/ABAC/05_analyst_country_row_filter_applied.png)
+Los requisitos centrales están completos y respaldados por código, configuración y evidencia visual. Power BI, Genie, Teams y Databricks App también están completos. La App extiende el proyecto más allá del alcance base sin crear una ruta paralela de datos: reutiliza el Agent, Warehouse, Gold y gobierno existentes.
 
-Schema evolution validado en Sales JSON:
+La colección completa está organizada en [`evidence/`](evidence/README.md); este documento muestra solo las pruebas más representativas.
 
-![Validación de schema evolution en Sales JSON](evidence/Medallion/salesjson/03_schema_evolution_validation.png)
+## Referencias técnicas
 
-Reconciliación de las cinco tablas entre SQL Federation y Bronze:
-
-![Reconciliación de SQL Federation a Bronze en SalesLT](evidence/Medallion/saleslt/01_sql_federation_to_bronze_reconciliation.png)
-
-## Automatización DEV y PROD
-
-[Databricks Declarative Automation Bundles](https://docs.databricks.com/aws/en/dev-tools/bundles/jobs-tutorial) define tres Jobs ETL y un Job manual de metadata reutilizados por ambos targets. Los Jobs ETL ejecutan Bronze -> Silver -> Gold con `environment=dev|prod`, un ingestion timestamp común y `run_as` **sp-centraulus-dbx-main**. El Job de metadata pasa el mismo ambiente del target a sus tres notebooks 98. Los widgets fuente tienen default vacío, así que las ejecuciones manuales requieren seleccionar explícitamente `dev` o `prod`; los Jobs no cambian de comportamiento porque envían el parámetro desde el Bundle. DEV se desplegó interactivamente con **josrami**. Para este proyecto académico, **sp-centraulus-dbx-main** también es la identidad de despliegue de GitHub OIDC en PROD.
-
-~~~text
-.github/workflows/deploy-prod.yml
-databricks.yml
-resources/
-├── metadata.job.yml
-├── salesjson.job.yml
-├── salescsv.job.yml
-└── saleslt.job.yml
-evidence/Automation/
-├── ADF/
-│   └── README.md
-├── Bundles/
-├── GitHubActions/
-│   └── README.md
-└── Metadata/
-    └── README.md
-~~~
-
-- **salesjson_medallion**: Serverless Jobs. Bronze tiene 2 retries con intervalo de 30 s; Silver y Gold, 1 retry con 30 s.
-- **salescsv_medallion**: classic single-node Job Compute con DBR 17.3 LTS, `Standard_D4ds_v4`, Photon, Standard access mode, `num_workers: 0` y sin autoscaling. Todas las tareas tienen 1 retry con intervalo de 30 s.
-- **saleslt_medallion**: Serverless Jobs; la conexión federada usa **sp-centraulus-azsql** y el runtime usa **sp-centraulus-dbx-main**. Bronze tiene 3 retries con intervalo de 60 s; Silver y Gold, 1 retry con 30 s.
-
-Los triggers de DEV se validaron temporalmente y quedaron `PAUSED`. PROD no tiene triggers ni schedules en Databricks porque ADF es el orquestador superior activo.
-
-- **metadata_documentation** / **Metadata Documentation**: tres tareas Serverless paralelas para SalesJSON, SalesCSV y SalesLT. Es manual, no define schedule ni trigger, hereda `run_as` **sp-centraulus-dbx-main** y permite aplicar metadata PROD sin otorgar permisos interactivos de datos PROD a Jose/developers.
-- Los notebooks `99_phase_validation` se mantienen para auditoría o troubleshooting por separado y no forman parte de este Job.
-
-### Cierre CI/CD de PROD
-
-El workflow **deploy-prod.yml** corre tras un push a **main** o manualmente. Usa permisos `id-token: write`, autenticación GitHub OIDC sin client secret y el GitHub Environment **prod** con Required Reviewer. La ejecución aprobada completó con éxito:
-
-~~~text
-databricks bundle validate -t prod
-databricks bundle deploy -t prod
-databricks bundle summary -t prod
-databricks bundle run -t prod salescsv_medallion
-databricks bundle run -t prod salesjson_medallion
-databricks bundle run -t prod saleslt_medallion
-~~~
-
-Resultado observable:
-
-- Bundle desplegado bajo **/Workspace/prod/ETLs**.
-- **SalesJSON Medallion** creado y ejecutado en Serverless.
-- **SalesCSV Medallion** creado y ejecutado en classic single-node Job Compute.
-- **SalesLT Medallion** creado y ejecutado en Serverless.
-- Los tres ETL PROD siguen exitosos y sin triggers PROD.
-
-El PR #3 promovió a `main` el default vacío de los widgets `environment` y `resources/metadata.job.yml`. GitHub Actions volvió a ejecutar el flujo PROD y el Bundle reconcilió/actualizó los recursos existentes. **Metadata Documentation** quedó desplegado como el cuarto Job: manual, sin trigger ni schedule, con tres tareas Serverless paralelas y `run_as` **sp-centraulus-dbx-main**. El Job se ejecutó correctamente con `environment=prod` recibido desde el target, sin otorgar permisos interactivos PROD a Jose ni al grupo developers. Los notebooks 99 siguen separados para auditoría o troubleshooting y fuera del flujo operativo. El checklist de evidencia está en **evidence/Automation/Metadata/README.md**.
-
-### Orquestación PROD con Azure Data Factory
-
-ADF v2 **adf-centralus-prod** usa el pipeline **pl_databricks_medallion_prod** y el linked service **ls_databricks_prod**, creado desde la actividad Databricks Job con la Managed Identity system-assigned del factory y Serverless para la conexión de control.
-
-La identidad de ADF tiene `CAN MANAGE RUN` sobre **SalesJSON Medallion**, **SalesCSV Medallion** y **SalesLT Medallion**, pero no tiene permisos de data plane en Unity Catalog ni ADLS. Los Jobs siguen administrados por el Databricks Bundle y ejecutan como **sp-centraulus-dbx-main**. ADF lanza los tres en paralelo con retry **0**; los retries se mantienen en las tareas de Databricks. **Metadata Documentation** sigue manual y fuera del pipeline. La primera ejecución end-to-end finalizó con las tres actividades y el pipeline global en `Succeeded`, y los runs se correlacionaron en Databricks. **Estado ADF: COMPLETE.**
-
-## Consumo Power BI
-
-**Estado: COMPLETE.** La ruta validada es **Power BI Desktop/Service -> Azure Databricks SQL Warehouse -> Unity Catalog Gold PROD**. La conexión usa la identidad **Data Analyst** con acceso de consumidor sobre Gold, no acceso de developer a PROD. Query History confirma `Source=PowerBI`, el compute del SQL Warehouse PROD y `User=Data Analyst`.
-
-Tablas consumidas:
-
-- `saleslt_prod.gold.monthly_sales_summary`
-- `saleslt_prod.gold.sales_by_product`
-- `saleslt_prod.gold.sales_by_customer`
-- `salescsv_prod.gold.inventory_by_product`
-- `salescsv_prod.gold.inventory_by_warehouse`
-- `salescsv_prod.gold.low_stock_products`
-
-No se crearon relaciones artificiales entre agregados Gold; cada visual usa la tabla con el grain correcto. **Sales & Inventory Executive Overview** incluye **Total Revenue**, **Total Orders**, **Total Customers**, **Low Stock Products**, **Monthly Net Revenue**, **Net Revenue by Product Category**, **Inventory Value by Warehouse** y **Products Requiring Replenishment**. El reporte fue publicado correctamente en el workspace **DBXJR** de Power BI Service. Copilot no fue necesario.
-
-## Consumo conversacional con Databricks Genie y Microsoft Teams
-
-**Genie: COMPLETE. Teams: COMPLETE.** El agente PROD **Sales & Inventory Analytics Agent** consulta Gold PROD mediante el SQL Warehouse existente. Sus instrucciones usan `net_revenue` como revenue predeterminado, seleccionan las tablas correctas por workload, no infieren joins entre SalesJSON, SalesCSV y SalesLT, no equiparan IDs de workloads distintos y respetan Unity Catalog.
-
-El tuning incluye **6 example queries**, **2 measures** —**Total SalesLT Net Revenue** y **Total Inventory Value**— y **1 filter**, **Low Stock**. Las validaciones confirmaron SalesLT revenue de **708,690.07**, el desglose de inventory value por warehouse, **3** productos bajo reorder level —Gaming Laptop, Conference Speaker y Mini PC— y a **Costa Rica** como país con mayor gasto del resumen actual SalesJSON: **29,956.50** sobre **18 clientes**.
-
-La aplicación Databricks Genie en Microsoft Teams quedó conectada al mismo agente. Data Analyst consultó los productos bajo reorder level y recibió correctamente los tres resultados con fuentes. Teams es una superficie externa de consumo; la ejecución, los permisos y el gobierno permanecen en Databricks/Unity Catalog. Junto con Power BI, el proyecto demuestra dos rutas complementarias: dashboard BI y analítica conversacional.
-
-## Databricks App bonus
-
-**Estado: IMPLEMENTED IN SOURCE / PENDING DATABRICKS DEPLOYMENT AND EVIDENCE.** **Sales & Inventory Assistant** es una UI Streamlit pequeña sobre el mismo Genie Agent, no una ruta nueva de acceso directo a datos. Usa `WorkspaceClient()` con autenticación administrada, recibe el Space ID mediante el App Resource `genie-space`, mantiene `conversation_id` por sesión y presenta únicamente la respuesta final y el SQL generado disponible. El source, las instrucciones manuales de despliegue y el checklist de evidencia están versionados, pero todavía no constituyen evidencia de una App ejecutándose en Databricks.
-
-## Estado de la entrega
-
-- DEV completo: fundación, Unity Catalog grants, ABAC, tres ETL, metadata/validación, evidencia y Bundle con operational hardening.
-- PROD completo para esta fase: fundación, catálogos, schemas, grants, ABAC aplicado y validado manualmente, OIDC CI/CD, `bundle validate/deploy/summary`, tres Jobs Bronze-to-Gold exitosos, cleanup de ambiente explícito, **Metadata Documentation** desplegado/ejecutado y orquestación ADF.
-- ADF v2 **adf-centralus-prod** ejecuta en paralelo los tres Jobs PROD mediante **pl_databricks_medallion_prod**; pipeline y runs correlacionados exitosos.
-- Consumo Power BI completo: dashboard publicado y acceso a Gold PROD validado mediante el SQL Warehouse con Data Analyst.
-- Consumo Databricks Genie completo: agente PROD sobre Gold gobernado, instrucciones semánticas, 6 queries, 2 measures, 1 filter y resultados validados.
-- Integración Microsoft Teams completa: Data Analyst conectado al mismo agente y query low stock validada con tres productos y fuentes.
-- Databricks App bonus: **implemented in source / pending Databricks deployment and evidence**; reutiliza el Genie Agent mediante `genie-space`.
-- El cierre documental se prepara en **dev_qa** y no se hace merge automático a **main**.
-- Faltan capturas detalladas de metadata como evidencia, no su despliegue ni ejecución. Los notebooks 99 se ejecutan por separado solo cuando se necesiten para auditoría o troubleshooting.
-- Trabajo restante: desplegar y validar la Databricks App, capturar sus cuatro evidencias y completar el cierre final de evidencias y la presentación.
+- [Auto Loader con file events](https://learn.microsoft.com/en-us/azure/databricks/ingestion/cloud-object-storage/auto-loader/file-events-explained)
+- [Unity Catalog y ADLS external locations](https://learn.microsoft.com/en-us/azure/databricks/connect/unity-catalog/cloud-storage/external-locations)
+- [Lakehouse Federation](https://learn.microsoft.com/en-us/azure/databricks/query-federation/)
+- [Conectividad privada de Serverless](https://learn.microsoft.com/en-us/azure/databricks/security/network/serverless-network-security/serverless-private-link)
+- [Declarative Automation Bundles](https://learn.microsoft.com/en-us/azure/databricks/dev-tools/bundles/)
+- [Databricks Apps con Genie Agent Resource](https://learn.microsoft.com/en-us/azure/databricks/dev-tools/databricks-apps/genie)

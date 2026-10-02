@@ -12,5 +12,6 @@
 - [x] `08_genie_country_customer_spending.png` — validated current SalesJSON customer summary: Costa Rica leads with **29,956.50** across **18 customers**.
 - [x] `09_teams_genie_configuration.png` — Microsoft Teams Databricks Genie app connected to the **Sales & Inventory Analytics Agent**.
 - [x] `10_teams_genie_low_stock_query.png` — Data Analyst asks for products below reorder level in Teams and receives the same 3 products with governed sources.
+- [x] `11_genie_query_history_data_analyst.png` — Databricks Query History attributes successful Agent-generated SQL to the **Data Analyst** identity and the PROD SQL Warehouse.
 
 The agent uses the existing PROD SQL Warehouse and Unity Catalog Gold data. Microsoft Teams is only the external conversational surface; query execution, authorization, and governance remain in Databricks and Unity Catalog. The main project READMEs embed only the most representative screenshots; the complete set remains organized here.

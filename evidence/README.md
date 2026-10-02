@@ -2,6 +2,7 @@
 
 Only representative screenshots are embedded in the project READMEs. The complete evidence set is organized here by technical area:
 
+- `Architecture/` — final Azure deployment architecture covering DEV/PROD, network segmentation, private endpoints, data services, and orchestration.
 - `Medallion/salesjson/` — Auto Loader, schema evolution, quality rules, Gold outputs, and reconciliation.
 - `Medallion/salescsv/` — batch ingestion, Silver quality, Gold inventory models, and reconciliation.
 - `Medallion/saleslt/` — SQL Federation-to-Bronze checks, Silver joins, Gold outputs, and reconciliation.
@@ -13,5 +14,8 @@ Only representative screenshots are embedded in the project READMEs. The complet
 - `Automation/ADF/` — completed ADF v2 orchestration and correlated Databricks runs.
 - `Consumption/PowerBI/` — completed Power BI consumption path, Databricks Query History, Desktop dashboard, and published Power BI Service report.
 - `Consumption/Genie/` — completed PROD Genie Agent tuning and validation, plus the successful Microsoft Teams Databricks Genie consumption path.
+- `Consumption/DatabricksApp/` — completed PROD Streamlit App, governed Genie conversations, App service-principal Query History, and deployment from `main`.
 
 PNG files use ordered, descriptive English names within each folder.
+
+Certification screenshots are intentionally stored outside technical evidence under `../certs/` and are linked from all three root READMEs.

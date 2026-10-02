@@ -1,12 +1,13 @@
 # Databricks App consumption evidence
 
-**Phase status: IMPLEMENTED IN SOURCE / PENDING DATABRICKS DEPLOYMENT AND EVIDENCE.**
+**Phase status: COMPLETE.** The Streamlit **Sales & Inventory Assistant** is deployed and running in PROD from the repository's `main` branch. It uses the managed `genie-space` App Resource to invoke the existing **Sales & Inventory Analytics Agent**.
 
-Capture the following screenshots after the manual PROD deployment of **Sales & Inventory Assistant**:
+- [x] `01_databricks_app_home.png` — running custom App home page with the four governed quick prompts.
+- [x] `02_databricks_app_revenue_conversation.png` — multi-turn SalesJSON revenue conversation and generated-SQL control.
+- [x] `03_databricks_app_low_stock_and_inventory.png` — low-stock and warehouse-inventory answers in one session.
+- [x] `04_databricks_app_top_categories.png` — top SalesJSON product categories returned from governed Gold data.
+- [x] `05_databricks_app_query_history_service_principal.png` — Query History shows successful Agent/SQL requests executed as the App service principal.
+- [x] `06_databricks_app_saleslt_category_conversation.png` — free-form SalesLT category follow-up demonstrating conversational continuity.
+- [x] `07_databricks_app_prod_deployment_main.png` — PROD App overview shows `Running`, successful deployment history, `main` as the Git source, and the `genie-space` resource.
 
-- [ ] `01_databricks_app_resource_genie.png` — App Resource configuration showing **Sales & Inventory Analytics Agent**, permission **Can run**, and resource key `genie-space`.
-- [ ] `02_databricks_app_running.png` — Databricks Apps overview showing the app in **Running** state and the custom Streamlit UI.
-- [ ] `03_databricks_app_quick_prompt.png` — successful response from one of the four quick prompts, with generated SQL expanded when available.
-- [ ] `04_databricks_app_custom_question.png` — successful free-form sales or inventory question in the same session, demonstrating conversational continuity.
-
-Do not mark this phase complete until the app is deployed, its service principal permissions are validated, and all four screenshots are present.
+Together, the screenshots validate deployment, source branch, managed identity, least-privilege Agent integration, governed SQL execution, quick prompts, and free-form multi-turn behavior. No credentials or access tokens are included.
