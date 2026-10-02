@@ -1,9 +1,29 @@
 # Power BI consumption evidence
 
-This folder documents the completed Power BI consumption path from Power BI Desktop and Service through the Azure Databricks SQL Warehouse to Unity Catalog Gold tables in PROD.
+**Phase status: COMPLETE.** This folder proves the governed consumption path from Power BI through the PROD Databricks SQL Warehouse to Unity Catalog Gold data. It covers query attribution, the completed Desktop model/report, and the published Power BI Service artifact.
 
-- [x] `01_databricks_query_history_powerbi.png` — Databricks Query History shows successful requests with `Source=PowerBI`, the PROD SQL Warehouse compute, and `User=Data Analyst`.
-- [x] `02_powerbi_desktop_dashboard.png` — Power BI Desktop shows the completed **Sales & Inventory Executive Overview** and the six Gold aggregate tables used by its visuals.
-- [x] `03_powerbi_service_published_dashboard.png` — Power BI Service shows the published report in workspace **DBXJR**.
+| # | What the screenshot demonstrates |
+|---|---|
+| 01 | Query History attributes successful requests to Power BI and the Data Analyst identity. |
+| 02 | Completed Desktop report using six Gold aggregate tables. |
+| 03 | Published report in Power BI Service workspace `DBXJR`. |
 
-The report uses consumer-style Data Analyst access to Gold PROD data. No artificial relationships were created between the Gold aggregate tables; each visual reads the table whose grain matches that visual.
+## 01 — Databricks Query History for Power BI
+
+Query History shows `Source=PowerBI`, the PROD SQL Warehouse, and `User=Data Analyst`, proving the governed runtime path.
+
+![Databricks Query History for Power BI](01_databricks_query_history_powerbi.png)
+
+## 02 — Completed Power BI Desktop report
+
+The Desktop view shows the Sales & Inventory Executive Overview and its six grain-appropriate Gold aggregate tables.
+
+![Power BI Desktop dashboard](02_powerbi_desktop_dashboard.png)
+
+## 03 — Published Power BI Service report
+
+The report is published in workspace `DBXJR`, demonstrating a consumable Service artifact rather than only a local Desktop file.
+
+![Published Power BI Service dashboard](03_powerbi_service_published_dashboard.png)
+
+[Back to evidence index](../../README.md) · [Ver en español](README_ES.md)

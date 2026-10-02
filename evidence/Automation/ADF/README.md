@@ -1,16 +1,22 @@
 # Azure Data Factory PROD orchestration evidence
 
-**Phase status: COMPLETE.**
+**Phase status: COMPLETE.** Azure Data Factory v2 `adf-centralus-prod` is the higher-level PROD orchestrator. Its managed identity starts the three Bundle-managed Medallion Jobs in parallel without receiving Unity Catalog or ADLS data-plane access.
 
-Azure Data Factory v2 **adf-centralus-prod** is the higher-level PROD orchestrator. Pipeline **pl_databricks_medallion_prod** uses linked service **ls_databricks_prod**, created from the Databricks Job activity with the factory's system-assigned managed identity and Serverless for the control connection.
+| Screenshot | What it demonstrates |
+|---|---|
+| `03_adf_pipeline_success.png` | All three Databricks Job activities and the overall pipeline completed with `Succeeded` status. |
+| `04_databricks_jobs_triggered_by_adf.png` | Corresponding successful PROD Job runs appeared in Databricks after the ADF execution. |
 
-The ADF managed identity has **CAN MANAGE RUN** on the three Bundle-managed PROD Jobs only. It has no Unity Catalog or ADLS data-plane permissions. The Jobs remain defined and deployed by the Databricks Bundle and continue to run as **sp-centraulus-dbx-main**.
+## 03 — Successful parallel ADF pipeline
 
-The pipeline starts **SalesJSON Medallion**, **SalesCSV Medallion**, and **SalesLT Medallion** in parallel. ADF retry is set to **0**; task retries remain inside the Databricks Jobs. **Metadata Documentation** remains manual and is intentionally outside this pipeline.
+The pipeline run proves that SalesJSON, SalesCSV, and SalesLT were launched in parallel and completed successfully while workload retries remained inside the Jobs.
 
-## Evidence checklist
+![ADF PROD pipeline success](03_adf_pipeline_success.png)
 
-- [x] `03_adf_pipeline_success.png` — the three Databricks Job activities and the overall pipeline completed with `Succeeded` status.
-- [x] `04_databricks_jobs_triggered_by_adf.png` — the corresponding PROD Jobs show recent successful runs in Databricks after the ADF execution.
+## 04 — Databricks Jobs triggered by ADF
 
-The first end-to-end orchestration run completed successfully in ADF, and the corresponding Databricks runs were manually correlated. No required ADF screenshot is currently missing from this checklist.
+The correlated Databricks run history confirms that ADF initiated the three deployed PROD Jobs rather than duplicating their definitions.
+
+![Databricks Jobs triggered by ADF](04_databricks_jobs_triggered_by_adf.png)
+
+[Back to evidence index](../../README.md) · [Ver en español](README_ES.md)

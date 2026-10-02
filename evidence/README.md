@@ -1,21 +1,37 @@
-# Evidence index
+# Technical evidence index
 
-Only representative screenshots are embedded in the project READMEs. The complete evidence set is organized here by technical area:
+[Índice en español](README_ES.md)
 
-- `Architecture/` — final Azure deployment architecture covering DEV/PROD, network segmentation, private endpoints, data services, and orchestration.
-- `Medallion/salesjson/` — Auto Loader, schema evolution, quality rules, Gold outputs, and reconciliation.
-- `Medallion/salescsv/` — batch ingestion, Silver quality, Gold inventory models, and reconciliation.
-- `Medallion/saleslt/` — SQL Federation-to-Bronze checks, Silver joins, Gold outputs, and reconciliation.
-- `Security/UC_GRANTS/` — catalog, schema, and external-location grants.
-- `Security/ABAC/` — column-mask and row-filter configuration and identity-specific results.
-- `Automation/Bundles/` — DEV Bundle validation, deployment, Job configuration, and successful runs.
-- `Automation/GitHubActions/` — PROD promotion, OIDC, approval gates, deployment, workspace, and Jobs.
-- `Automation/Metadata/` — manual Metadata Documentation Job evidence checklist.
-- `Automation/ADF/` — completed ADF v2 orchestration and correlated Databricks runs.
-- `Consumption/PowerBI/` — completed Power BI consumption path, Databricks Query History, Desktop dashboard, and published Power BI Service report.
-- `Consumption/Genie/` — completed PROD Genie Agent tuning and validation, plus the successful Microsoft Teams Databricks Genie consumption path.
-- `Consumption/DatabricksApp/` — completed PROD Streamlit App, governed Genie conversations, App service-principal Query History, and deployment from `main`.
+**Overall status: COMPLETE.** This is the master navigation page for the project's visual technical evidence. Each linked folder contains an English and Spanish index, a concise explanation of what every screenshot proves, and every image embedded in numeric order.
 
-PNG files use ordered, descriptive English names within each folder.
+## 1. Architecture
 
-Certification screenshots are intentionally stored outside technical evidence under `../certs/` and are linked from all three root READMEs.
+- [Azure deployment architecture](Architecture/README.md) — DEV/PROD separation, network topology, private connectivity, data services, automation, and consumption paths.
+
+## 2. Medallion
+
+- [SalesJSON](Medallion/salesjson/README.md) — Auto Loader ingestion, additive schema evolution, rejected records, Gold outputs, checkpoints, and revenue reconciliation.
+- [SalesCSV](Medallion/salescsv/README.md) — batch inventory ingestion, data-quality quarantine, enriched Silver data, Gold models, business-rule checks, and external Delta storage.
+- [SalesLT](Medallion/saleslt/README.md) — Azure SQL Federation-to-Bronze counts, Silver transformations, Gold outputs, and revenue reconciliation over private connectivity.
+
+## 3. Security
+
+- [Unity Catalog grants](Security/UC_GRANTS/README.md) — catalog, external-location, and schema grants proving environment separation and least privilege.
+- [ABAC](Security/ABAC/README.md) — governed column-mask and row-filter configuration with analyst and privileged identity results.
+
+## 4. Automation
+
+- [Declarative Automation Bundles](Automation/Bundles/README.md) — DEV validation/deployment, Job definitions, triggers, `run_as`, retries, successful runs, and the manual Metadata Documentation Job.
+- [GitHub Actions](Automation/GitHubActions/README.md) — PR promotion, protected PROD approvals, OIDC federation, Bundle deployment, PROD Jobs, and deployed workspace files.
+- [Metadata Documentation Job](Automation/Bundles/README.md#metadata-documentation-job) — metadata is documented within the Bundles index because there is no separate screenshot folder.
+- [Azure Data Factory](Automation/ADF/README.md) — successful parallel orchestration of all three PROD Databricks Jobs and their correlated runs.
+
+## 5. Consumption
+
+- [Power BI](Consumption/PowerBI/README.md) — SQL Warehouse Query History, completed Desktop report, and published Power BI Service report.
+- [Genie and Microsoft Teams](Consumption/Genie/README.md) — Agent sources/instructions, validated answers, Teams integration, and governed Query History.
+- [Databricks App](Consumption/DatabricksApp/README.md) — deployed Streamlit App, multi-turn governed conversations, managed service-principal execution, and deployment from `main`.
+
+Certification images are intentionally kept under [`../certs/`](../certs/) and remain in the root READMEs because they are credentials rather than phase-specific technical evidence.
+
+[Back to the main README](../README.md) · [Ver este índice en español](README_ES.md)
